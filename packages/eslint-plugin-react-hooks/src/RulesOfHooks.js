@@ -5,6 +5,7 @@
  * LICENSE file in the root directory of this source tree.
  */
 
+/* global BigInt */
 /* eslint-disable no-for-of-loops/no-for-of-loops */
 
 'use strict';
@@ -31,10 +32,9 @@ function isHook(node) {
     !node.computed &&
     isHook(node.property)
   ) {
-    // Only consider React.useFoo() to be namespace hooks for now to avoid false positives.
-    // We can expand this check later.
     const obj = node.object;
-    return obj.type === 'Identifier' && obj.name === 'React';
+    const isPascalCaseNameSpace = /^[A-Z].*/;
+    return obj.type === 'Identifier' && isPascalCaseNameSpace.test(obj.name);
   } else {
     return false;
   }
@@ -110,7 +110,6 @@ export default {
     type: 'problem',
     docs: {
       description: 'enforces the Rules of Hooks',
-      category: 'Possible Errors',
       recommended: true,
       url: 'https://reactjs.org/docs/hooks-rules.html',
     },
@@ -177,7 +176,7 @@ export default {
               cyclic.add(cyclicSegment);
             }
 
-            return 0;
+            return BigInt('0');
           }
 
           // add the current segment to pathList
@@ -189,11 +188,11 @@ export default {
           }
 
           if (codePath.thrownSegments.includes(segment)) {
-            paths = 0;
+            paths = BigInt('0');
           } else if (segment.prevSegments.length === 0) {
-            paths = 1;
+            paths = BigInt('1');
           } else {
-            paths = 0;
+            paths = BigInt('0');
             for (const prevSegment of segment.prevSegments) {
               paths += countPathsFromStart(prevSegment, pathList);
             }
@@ -201,7 +200,7 @@ export default {
 
           // If our segment is reachable then there should be at least one path
           // to it from the start of our code path.
-          if (segment.reachable && paths === 0) {
+          if (segment.reachable && paths === BigInt('0')) {
             cache.delete(segment.id);
           } else {
             cache.set(segment.id, paths);
@@ -248,7 +247,7 @@ export default {
               cyclic.add(cyclicSegment);
             }
 
-            return 0;
+            return BigInt('0');
           }
 
           // add the current segment to pathList
@@ -260,11 +259,11 @@ export default {
           }
 
           if (codePath.thrownSegments.includes(segment)) {
-            paths = 0;
+            paths = BigInt('0');
           } else if (segment.nextSegments.length === 0) {
-            paths = 1;
+            paths = BigInt('1');
           } else {
-            paths = 0;
+            paths = BigInt('0');
             for (const nextSegment of segment.nextSegments) {
               paths += countPathsToEnd(nextSegment, pathList);
             }
@@ -482,7 +481,9 @@ export default {
                 `React Hook "${context.getSource(hook)}" is called in ` +
                 `function "${context.getSource(codePathFunctionName)}" ` +
                 'that is neither a React function component nor a custom ' +
-                'React Hook function.';
+                'React Hook function.' +
+                ' React component names must start with an uppercase letter.' +
+                ' React Hook names must start with the word "use".';
               context.report({node: hook, message});
             } else if (codePathNode.type === 'Program') {
               // These are dangerous if you have inline requires enabled.
@@ -536,7 +537,7 @@ export default {
  * easy. For anonymous function expressions it is much harder. If you search for
  * `IsAnonymousFunctionDefinition()` in the ECMAScript spec you'll find places
  * where JS gives anonymous function expressions names. We roughly detect the
- * same AST nodes with some exceptions to better fit our usecase.
+ * same AST nodes with some exceptions to better fit our use case.
  */
 
 function getFunctionName(node) {

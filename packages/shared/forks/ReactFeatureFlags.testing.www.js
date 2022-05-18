@@ -12,22 +12,22 @@ import typeof * as ExportsType from './ReactFeatureFlags.testing.www';
 
 export const debugRenderPhaseSideEffectsForStrictMode = false;
 export const enableDebugTracing = false;
+export const enableSchedulingProfiler = false;
 export const warnAboutDeprecatedLifecycles = true;
 export const replayFailedUnitOfWorkWithInvokeGuardedCallback = false;
 export const enableProfilerTimer = false;
 export const enableProfilerCommitHooks = false;
-export const enableSchedulerTracing = false;
-export const enableSuspenseServerRenderer = true;
-export const enableSelectiveHydration = true;
-export const enableBlocksAPI = true;
+export const enableProfilerNestedUpdatePhase = false;
+export const enableProfilerNestedUpdateScheduledHook = false;
+export const enableUpdaterTracking = false;
+export const enableCache = true;
+export const enableCacheElement = true;
 export const disableJavaScriptURLs = true;
+export const disableCommentsAsDOMContainers = true;
 export const disableInputAttributeSyncing = false;
 export const enableSchedulerDebugging = false;
-export const enableDeprecatedFlareAPI = true;
-export const enableFundamentalAPI = false;
 export const enableScopeAPI = true;
-export const enableUseEventAPI = true;
-export const warnAboutUnmockedScheduler = true;
+export const enableCreateEventHandleAPI = true;
 export const enableSuspenseCallback = true;
 export const warnAboutDefaultPropsOnFunctionComponents = false;
 export const warnAboutStringRefs = false;
@@ -36,19 +36,41 @@ export const disableSchedulerTimeoutBasedOnReactExpirationTime = false;
 export const enableTrustedTypesIntegration = false;
 export const disableTextareaChildren = __EXPERIMENTAL__;
 export const disableModulePatternComponents = true;
-export const warnUnstableRenderSubtreeIntoContainer = false;
-export const deferPassiveEffectCleanupDuringUnmount = true;
-export const runAllPassiveEffectDestroysBeforeCreates = true;
-export const enableModernEventSystem = false;
 export const warnAboutSpreadingKeyToJSX = false;
-export const enableComponentStackLocations = false;
+export const enableSuspenseAvoidThisFallback = true;
+export const enableSuspenseAvoidThisFallbackFizz = false;
+export const enableCPUSuspense = true;
+export const enableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay = true;
+export const enableClientRenderFallbackOnTextMismatch = true;
+export const enableComponentStackLocations = true;
 export const enableLegacyFBSupport = !__EXPERIMENTAL__;
 export const enableFilterEmptyStringAttributesDOM = false;
-
-// Internal-only attempt to debug a React Native issue. See D20130868.
-export const throwEarlyForMysteriousError = false;
-
+export const disableNativeComponentFrames = false;
+export const skipUnmountedBoundaries = true;
+export const deletedTreeCleanUpLevel = 3;
+export const enableSuspenseLayoutEffectSemantics = false;
+export const enableGetInspectorDataForInstanceInProduction = false;
 export const enableNewReconciler = false;
+export const deferRenderPhaseUpdateToNextBatch = false;
+
+export const enableStrictEffects = false;
+export const createRootStrictEffectsByDefault = false;
+export const enableUseRefAccessWarning = false;
+
+export const disableSchedulerTimeoutInWorkLoop = false;
+export const enableLazyContextPropagation = false;
+export const enableLegacyHidden = false;
+export const enableSyncDefaultUpdates = true;
+export const allowConcurrentByDefault = true;
+export const enableCustomElementPropertySupport = false;
+
+export const consoleManagedByDevToolsDuringStrictMode = false;
+export const enableServerContext = false;
+// Some www surfaces are still using this. Remove once they have been migrated.
+export const enableUseMutableSource = true;
+
+export const enableTransitionTracing = false;
+export const enableSymbolFallbackForWWW = false;
 
 // Flow magic to verify the exports of this file match the original version.
 // eslint-disable-next-line no-unused-vars

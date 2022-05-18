@@ -5,13 +5,13 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import getComponentName from 'shared/getComponentName';
-import invariant from 'shared/invariant';
+import getComponentNameFromType from 'shared/getComponentNameFromType';
 import {REACT_ELEMENT_TYPE} from 'shared/ReactSymbols';
+import assign from 'shared/assign';
+import hasOwnProperty from 'shared/hasOwnProperty';
+import {checkKeyStringCoercion} from 'shared/CheckStringCoercion';
 
 import ReactCurrentOwner from './ReactCurrentOwner';
-
-const hasOwnProperty = Object.prototype.hasOwnProperty;
 
 const RESERVED_PROPS = {
   key: true,
@@ -61,7 +61,7 @@ function defineKeyPropWarningGetter(props, displayName) {
           '%s: `key` is not a prop. Trying to access it will result ' +
             'in `undefined` being returned. If you need to access the same ' +
             'value within the child component, you should pass it as a different ' +
-            'prop. (https://fb.me/react-special-props)',
+            'prop. (https://reactjs.org/link/special-props)',
           displayName,
         );
       }
@@ -83,7 +83,7 @@ function defineRefPropWarningGetter(props, displayName) {
           '%s: `ref` is not a prop. Trying to access it will result ' +
             'in `undefined` being returned. If you need to access the same ' +
             'value within the child component, you should pass it as a different ' +
-            'prop. (https://fb.me/react-special-props)',
+            'prop. (https://reactjs.org/link/special-props)',
           displayName,
         );
       }
@@ -104,7 +104,9 @@ function warnIfStringRefCannotBeAutoConverted(config) {
       config.__self &&
       ReactCurrentOwner.current.stateNode !== config.__self
     ) {
-      const componentName = getComponentName(ReactCurrentOwner.current.type);
+      const componentName = getComponentNameFromType(
+        ReactCurrentOwner.current.type,
+      );
 
       if (!didWarnAboutStringRefs[componentName]) {
         console.error(
@@ -113,7 +115,7 @@ function warnIfStringRefCannotBeAutoConverted(config) {
             'This case cannot be automatically converted to an arrow function. ' +
             'We ask you to manually fix this case by using useRef() or createRef() instead. ' +
             'Learn more about using refs safely here: ' +
-            'https://fb.me/react-strict-mode-string-ref',
+            'https://reactjs.org/link/strict-mode-string-ref',
           componentName,
           config.ref,
         );
@@ -221,10 +223,16 @@ export function jsx(type, config, maybeKey) {
   // <div {...props} key="Hi" />, because we aren't currently able to tell if
   // key is explicitly declared to be undefined or not.
   if (maybeKey !== undefined) {
+    if (__DEV__) {
+      checkKeyStringCoercion(maybeKey);
+    }
     key = '' + maybeKey;
   }
 
   if (hasValidKey(config)) {
+    if (__DEV__) {
+      checkKeyStringCoercion(config.key);
+    }
     key = '' + config.key;
   }
 
@@ -285,10 +293,16 @@ export function jsxDEV(type, config, maybeKey, source, self) {
   // <div {...props} key="Hi" />, because we aren't currently able to tell if
   // key is explicitly declared to be undefined or not.
   if (maybeKey !== undefined) {
+    if (__DEV__) {
+      checkKeyStringCoercion(maybeKey);
+    }
     key = '' + maybeKey;
   }
 
   if (hasValidKey(config)) {
+    if (__DEV__) {
+      checkKeyStringCoercion(config.key);
+    }
     key = '' + config.key;
   }
 
@@ -365,6 +379,9 @@ export function createElement(type, config, children) {
       }
     }
     if (hasValidKey(config)) {
+      if (__DEV__) {
+        checkKeyStringCoercion(config.key);
+      }
       key = '' + config.key;
     }
 
@@ -467,16 +484,16 @@ export function cloneAndReplaceKey(oldElement, newKey) {
  * See https://reactjs.org/docs/react-api.html#cloneelement
  */
 export function cloneElement(element, config, children) {
-  invariant(
-    !(element === null || element === undefined),
-    'React.cloneElement(...): The argument must be a React element, but you passed %s.',
-    element,
-  );
+  if (element === null || element === undefined) {
+    throw new Error(
+      `React.cloneElement(...): The argument must be a React element, but you passed ${element}.`,
+    );
+  }
 
   let propName;
 
   // Original props are copied
-  const props = Object.assign({}, element.props);
+  const props = assign({}, element.props);
 
   // Reserved names are extracted
   let key = element.key;
@@ -498,6 +515,9 @@ export function cloneElement(element, config, children) {
       owner = ReactCurrentOwner.current;
     }
     if (hasValidKey(config)) {
+      if (__DEV__) {
+        checkKeyStringCoercion(config.key);
+      }
       key = '' + config.key;
     }
 

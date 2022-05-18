@@ -7,15 +7,30 @@
  * @flow
  */
 
+import type {ReactNodeList, Wakeable} from 'shared/ReactTypes';
 import type {Fiber} from './ReactInternalTypes';
 import type {SuspenseInstance} from './ReactFiberHostConfig';
-import type {ExpirationTime} from './ReactFiberExpirationTime.old';
+import type {Lane} from './ReactFiberLane.old';
+import type {TreeContext} from './ReactFiberTreeContext.old';
+
+import {enableSuspenseAvoidThisFallback} from 'shared/ReactFeatureFlags';
 import {SuspenseComponent, SuspenseListComponent} from './ReactWorkTags';
-import {NoEffect, DidCapture} from './ReactSideEffectTags';
+import {NoFlags, DidCapture} from './ReactFiberFlags';
 import {
   isSuspenseInstancePending,
   isSuspenseInstanceFallback,
 } from './ReactFiberHostConfig';
+
+export type SuspenseProps = {|
+  children?: ReactNodeList,
+  fallback?: ReactNodeList,
+
+  // TODO: Add "unstable_" prefix?
+  suspenseCallback?: (Set<Wakeable> | null) => mixed,
+
+  unstable_expectedLoadTime?: number,
+  unstable_name?: string,
+|};
 
 // A null SuspenseState represents an unsuspended normal Suspense boundary.
 // A non-null SuspenseState means that it is blocked for one reason or another.
@@ -29,15 +44,11 @@ export type SuspenseState = {|
   // here to indicate that it is dehydrated (flag) and for quick access
   // to check things like isSuspenseInstancePending.
   dehydrated: null | SuspenseInstance,
-  // Represents the work that was deprioritized when we committed the fallback.
-  // The work outside the boundary already committed at this level, so we cannot
-  // unhide the content without including it.
-  baseTime: ExpirationTime,
-  // Represents the earliest expiration time we should attempt to hydrate
-  // a dehydrated boundary at.
-  // Never is the default for dehydrated boundaries.
-  // NoWork is the default for normal boundaries, which turns into "normal" pri.
-  retryTime: ExpirationTime,
+  treeContext: null | TreeContext,
+  // Represents the lane we should attempt to hydrate a dehydrated boundary at.
+  // OffscreenLane is the default for dehydrated boundaries.
+  // NoLane is the default for normal boundaries, which turns into "normal" pri.
+  retryLane: Lane,
 |};
 
 export type SuspenseListTailMode = 'collapsed' | 'hidden' | void;
@@ -46,19 +57,14 @@ export type SuspenseListRenderState = {|
   isBackwards: boolean,
   // The currently rendering tail row.
   rendering: null | Fiber,
-  // The absolute time when we started rendering the tail row.
+  // The absolute time when we started rendering the most recent tail row.
   renderingStartTime: number,
   // The last of the already rendered children.
   last: null | Fiber,
   // Remaining rows on the tail of the list.
   tail: null | Fiber,
-  // The absolute time in ms that we'll expire the tail rendering.
-  tailExpiration: number,
   // Tail insertions setting.
   tailMode: SuspenseListTailMode,
-  // Last Effect before we rendered the "rendering" item.
-  // Used to remove new effects added by the rendered item.
-  lastEffect: null | Fiber,
 |};
 
 export function shouldCaptureSuspense(
@@ -76,12 +82,11 @@ export function shouldCaptureSuspense(
     return false;
   }
   const props = workInProgress.memoizedProps;
-  // In order to capture, the Suspense component must have a fallback prop.
-  if (props.fallback === undefined) {
-    return false;
-  }
   // Regular boundaries always capture.
-  if (props.unstable_avoidThisFallback !== true) {
+  if (
+    !enableSuspenseAvoidThisFallback ||
+    props.unstable_avoidThisFallback !== true
+  ) {
     return true;
   }
   // If it's a boundary we should avoid, then we prefer to bubble up to the
@@ -114,7 +119,7 @@ export function findFirstSuspended(row: Fiber): null | Fiber {
       // keep track of whether it suspended or not.
       node.memoizedProps.revealOrder !== undefined
     ) {
-      const didSuspend = (node.effectTag & DidCapture) !== NoEffect;
+      const didSuspend = (node.flags & DidCapture) !== NoFlags;
       if (didSuspend) {
         return node;
       }

@@ -5,19 +5,9 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import invariant from 'shared/invariant';
-// TODO: We can remove this if we add invariantWithStack()
-// or add stack by default to invariants where possible.
-import ReactSharedInternals from 'shared/ReactSharedInternals';
-
 import voidElementTags from './voidElementTags';
 
 const HTML = '__html';
-
-let ReactDebugCurrentFrame = null;
-if (__DEV__) {
-  ReactDebugCurrentFrame = ReactSharedInternals.ReactDebugCurrentFrame;
-}
 
 function assertValidProps(tag: string, props: ?Object) {
   if (!props) {
@@ -25,26 +15,30 @@ function assertValidProps(tag: string, props: ?Object) {
   }
   // Note the use of `==` which checks for null or undefined.
   if (voidElementTags[tag]) {
-    invariant(
-      props.children == null && props.dangerouslySetInnerHTML == null,
-      '%s is a void element tag and must neither have `children` nor ' +
-        'use `dangerouslySetInnerHTML`.%s',
-      tag,
-      __DEV__ ? ReactDebugCurrentFrame.getStackAddendum() : '',
-    );
+    if (props.children != null || props.dangerouslySetInnerHTML != null) {
+      throw new Error(
+        `${tag} is a void element tag and must neither have \`children\` nor ` +
+          'use `dangerouslySetInnerHTML`.',
+      );
+    }
   }
   if (props.dangerouslySetInnerHTML != null) {
-    invariant(
-      props.children == null,
-      'Can only set one of `children` or `props.dangerouslySetInnerHTML`.',
-    );
-    invariant(
-      typeof props.dangerouslySetInnerHTML === 'object' &&
-        HTML in props.dangerouslySetInnerHTML,
-      '`props.dangerouslySetInnerHTML` must be in the form `{__html: ...}`. ' +
-        'Please visit https://fb.me/react-invariant-dangerously-set-inner-html ' +
-        'for more information.',
-    );
+    if (props.children != null) {
+      throw new Error(
+        'Can only set one of `children` or `props.dangerouslySetInnerHTML`.',
+      );
+    }
+
+    if (
+      typeof props.dangerouslySetInnerHTML !== 'object' ||
+      !(HTML in props.dangerouslySetInnerHTML)
+    ) {
+      throw new Error(
+        '`props.dangerouslySetInnerHTML` must be in the form `{__html: ...}`. ' +
+          'Please visit https://reactjs.org/link/dangerously-set-inner-html ' +
+          'for more information.',
+      );
+    }
   }
   if (__DEV__) {
     if (
@@ -60,13 +54,14 @@ function assertValidProps(tag: string, props: ?Object) {
       );
     }
   }
-  invariant(
-    props.style == null || typeof props.style === 'object',
-    'The `style` prop expects a mapping from style properties to values, ' +
-      "not a string. For example, style={{marginRight: spacing + 'em'}} when " +
-      'using JSX.%s',
-    __DEV__ ? ReactDebugCurrentFrame.getStackAddendum() : '',
-  );
+
+  if (props.style != null && typeof props.style !== 'object') {
+    throw new Error(
+      'The `style` prop expects a mapping from style properties to values, ' +
+        "not a string. For example, style={{marginRight: spacing + 'em'}} when " +
+        'using JSX.',
+    );
+  }
 }
 
 export default assertValidProps;

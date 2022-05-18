@@ -1,5 +1,8 @@
 [ignore]
 .*/scripts/bench/.*
+.*/build/.*
+.*/fixtures/.*
+.*/.tempUserDataDir/.*
 
 # These shims are copied into external projects:
 .*/rollup/shims/facebook-www/.*
@@ -20,16 +23,17 @@
 %REACT_RENDERER_FLOW_IGNORES%
 
 [include]
-../../../node_modules/
-../../../packages/
-../../../scripts/
+./node_modules/
+./packages/
+./scripts/
 
 [libs]
-../../../node_modules/fbjs/flow/lib/dev.js
-../environment.js
-../react-devtools.js
-../react-native-host-hooks.js
-../react-relay-hooks.js
+./node_modules/fbjs/flow/lib/dev.js
+./scripts/flow/environment.js
+./scripts/flow/react-devtools.js
+./scripts/flow/react-native-host-hooks.js
+./scripts/flow/react-relay-hooks.js
+./scripts/flow/xplat.js
 
 [lints]
 untyped-type-import=error
@@ -38,6 +42,7 @@ untyped-type-import=error
 server.max_workers=4
 esproposal.class_static_fields=enable
 esproposal.class_instance_fields=enable
+esproposal.optional_chaining=enable
 
 # Substituted by createFlowConfig.js:
 %REACT_RENDERER_FLOW_OPTIONS%

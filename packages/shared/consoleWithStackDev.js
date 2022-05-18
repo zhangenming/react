@@ -7,6 +7,13 @@
 
 import ReactSharedInternals from 'shared/ReactSharedInternals';
 
+let suppressWarning = false;
+export function setSuppressWarning(newSuppressWarning) {
+  if (__DEV__) {
+    suppressWarning = newSuppressWarning;
+  }
+}
+
 // In DEV, calls to console.warn and console.error get replaced
 // by calls to these methods by a Babel plugin.
 //
@@ -15,13 +22,17 @@ import ReactSharedInternals from 'shared/ReactSharedInternals';
 
 export function warn(format, ...args) {
   if (__DEV__) {
-    printWarning('warn', format, args);
+    if (!suppressWarning) {
+      printWarning('warn', format, args);
+    }
   }
 }
 
 export function error(format, ...args) {
   if (__DEV__) {
-    printWarning('error', format, args);
+    if (!suppressWarning) {
+      printWarning('error', format, args);
+    }
   }
 }
 
@@ -29,37 +40,20 @@ function printWarning(level, format, args) {
   // When changing this logic, you might want to also
   // update consoleWithStackDev.www.js as well.
   if (__DEV__) {
-    const hasExistingStack =
-      args.length > 0 &&
-      typeof args[args.length - 1] === 'string' &&
-      args[args.length - 1].indexOf('\n    in') === 0;
-
-    if (!hasExistingStack) {
-      const ReactDebugCurrentFrame =
-        ReactSharedInternals.ReactDebugCurrentFrame;
-      const stack = ReactDebugCurrentFrame.getStackAddendum();
-      if (stack !== '') {
-        format += '%s';
-        args = args.concat([stack]);
-      }
+    const ReactDebugCurrentFrame = ReactSharedInternals.ReactDebugCurrentFrame;
+    const stack = ReactDebugCurrentFrame.getStackAddendum();
+    if (stack !== '') {
+      format += '%s';
+      args = args.concat([stack]);
     }
 
-    const argsWithFormat = args.map(item => '' + item);
+    // eslint-disable-next-line react-internal/safe-string-coercion
+    const argsWithFormat = args.map(item => String(item));
     // Careful: RN currently depends on this prefix
     argsWithFormat.unshift('Warning: ' + format);
     // We intentionally don't use spread (or .apply) directly because it
     // breaks IE9: https://github.com/facebook/react/issues/13610
     // eslint-disable-next-line react-internal/no-production-logging
     Function.prototype.apply.call(console[level], console, argsWithFormat);
-
-    try {
-      // --- Welcome to debugging React ---
-      // This error was thrown as a convenience so that you can use this stack
-      // to find the callsite that caused this warning to fire.
-      let argIndex = 0;
-      const message =
-        'Warning: ' + format.replace(/%s/g, () => args[argIndex++]);
-      throw new Error(message);
-    } catch (x) {}
   }
 }

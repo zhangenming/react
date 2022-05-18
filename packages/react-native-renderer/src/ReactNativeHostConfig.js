@@ -9,8 +9,6 @@
 
 import type {TouchedViewDataAtPoint} from './ReactNativeTypes';
 
-import invariant from 'shared/invariant';
-
 // Modules provided by RN:
 import {
   ReactNativeViewConfigRegistry,
@@ -26,11 +24,9 @@ import {
 } from './ReactNativeComponentTree';
 import ReactNativeFiberHostComponent from './ReactNativeFiberHostComponent';
 
-const {get: getViewConfigForType} = ReactNativeViewConfigRegistry;
+import {DefaultEventPriority} from 'react-reconciler/src/ReactEventPriorities';
 
-export type ReactListenerEvent = Object;
-export type ReactListenerMap = Object;
-export type ReactListener = Object;
+const {get: getViewConfigForType} = ReactNativeViewConfigRegistry;
 
 export type Type = string;
 export type Props = Object;
@@ -47,7 +43,6 @@ export type ChildSet = void; // Unused
 
 export type TimeoutHandle = TimeoutID;
 export type NoTimeout = -1;
-export type OpaqueIDType = void;
 
 export type RendererInspectionConfig = $ReadOnly<{|
   // Deprecated. Replaced with getInspectorDataForViewAtPoint.
@@ -91,6 +86,9 @@ function recursivelyUncacheFiberNode(node: Instance | TextInstance) {
 
 export * from 'react-reconciler/src/ReactFiberHostConfigWithNoPersistence';
 export * from 'react-reconciler/src/ReactFiberHostConfigWithNoHydration';
+export * from 'react-reconciler/src/ReactFiberHostConfigWithNoScopes';
+export * from 'react-reconciler/src/ReactFiberHostConfigWithNoTestSelectors';
+export * from 'react-reconciler/src/ReactFiberHostConfigWithNoMicrotasks';
 
 export function appendInitialChild(
   parentInstance: Instance,
@@ -146,10 +144,9 @@ export function createTextInstance(
   hostContext: HostContext,
   internalInstanceHandle: Object,
 ): TextInstance {
-  invariant(
-    hostContext.isInAParentText,
-    'Text strings must be rendered within a <Text> component.',
-  );
+  if (!hostContext.isInAParentText) {
+    throw new Error('Text strings must be rendered within a <Text> component.');
+  }
 
   const tag = allocateTag();
 
@@ -223,8 +220,9 @@ export function getPublicInstance(instance: Instance): * {
   return instance;
 }
 
-export function prepareForCommit(containerInfo: Container): void {
+export function prepareForCommit(containerInfo: Container): null | Object {
   // Noop
+  return null;
 }
 
 export function prepareUpdate(
@@ -249,10 +247,6 @@ export const scheduleTimeout = setTimeout;
 export const cancelTimeout = clearTimeout;
 export const noTimeout = -1;
 
-export function shouldDeprioritizeSubtree(type: string, props: Props): boolean {
-  return false;
-}
-
 export function shouldSetTextContent(type: string, props: Props): boolean {
   // TODO (bvaughn) Revisit this decision.
   // Always returning false simplifies the createInstance() implementation,
@@ -261,6 +255,10 @@ export function shouldSetTextContent(type: string, props: Props): boolean {
   // It's not clear to me which is better so I'm deferring for now.
   // More context @ github.com/facebook/react/pull/8560#discussion_r92111303
   return false;
+}
+
+export function getCurrentEventPriority(): * {
+  return DefaultEventPriority;
 }
 
 // -------------------
@@ -409,10 +407,9 @@ export function insertInContainerBefore(
   // We create a wrapper object for the container in ReactNative render()
   // Or we refactor to remove wrapper objects entirely.
   // For more info on pros/cons see PR #8560 description.
-  invariant(
-    typeof parentInstance !== 'number',
-    'Container does not support insertBefore operation',
-  );
+  if (typeof parentInstance === 'number') {
+    throw new Error('Container does not support insertBefore operation');
+  }
 }
 
 export function removeChild(
@@ -485,6 +482,11 @@ export function unhideInstance(instance: Instance, props: Props): void {
   );
 }
 
+export function clearContainer(container: Container): void {
+  // TODO Implement this for React Native
+  // UIManager does not expose a "remove all" type method.
+}
+
 export function unhideTextInstance(
   textInstance: TextInstance,
   text: string,
@@ -492,84 +494,22 @@ export function unhideTextInstance(
   throw new Error('Not yet implemented.');
 }
 
-export function DEPRECATED_mountResponderInstance(
-  responder: any,
-  responderInstance: any,
-  props: Object,
-  state: Object,
-  instance: Instance,
-) {
-  throw new Error('Not yet implemented.');
-}
-
-export function DEPRECATED_unmountResponderInstance(
-  responderInstance: any,
-): void {
-  throw new Error('Not yet implemented.');
-}
-
-export function getFundamentalComponentInstance(fundamentalInstance: any) {
-  throw new Error('Not yet implemented.');
-}
-
-export function mountFundamentalComponent(fundamentalInstance: any) {
-  throw new Error('Not yet implemented.');
-}
-
-export function shouldUpdateFundamentalComponent(fundamentalInstance: any) {
-  throw new Error('Not yet implemented.');
-}
-
-export function updateFundamentalComponent(fundamentalInstance: any) {
-  throw new Error('Not yet implemented.');
-}
-
-export function unmountFundamentalComponent(fundamentalInstance: any) {
-  throw new Error('Not yet implemented.');
-}
-
 export function getInstanceFromNode(node: any) {
   throw new Error('Not yet implemented.');
 }
 
-export function beforeRemoveInstance(instance: any) {
+export function beforeActiveInstanceBlur(internalInstanceHandle: Object) {
   // noop
 }
 
-export function isOpaqueHydratingObject(value: mixed): boolean {
-  throw new Error('Not yet implemented');
+export function afterActiveInstanceBlur() {
+  // noop
 }
 
-export function makeOpaqueHydratingObject(
-  attemptToReadValue: () => void,
-): OpaqueIDType {
-  throw new Error('Not yet implemented.');
+export function preparePortalMount(portalInstance: Instance): void {
+  // noop
 }
 
-export function makeClientId(): OpaqueIDType {
-  throw new Error('Not yet implemented');
-}
-
-export function makeClientIdInDEV(warnOnAccessInDEV: () => void): OpaqueIDType {
-  throw new Error('Not yet implemented');
-}
-
-export function makeServerId(): OpaqueIDType {
-  throw new Error('Not yet implemented');
-}
-
-export function registerEvent(event: any, rootContainerInstance: Container) {
-  throw new Error('Not yet implemented.');
-}
-
-export function mountEventListener(listener: any) {
-  throw new Error('Not yet implemented.');
-}
-
-export function unmountEventListener(listener: any) {
-  throw new Error('Not yet implemented.');
-}
-
-export function validateEventListenerTarget(target: any, listener: any) {
-  throw new Error('Not yet implemented.');
+export function detachDeletedInstance(node: Instance): void {
+  // noop
 }

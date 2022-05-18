@@ -7,13 +7,10 @@
 
 import Transform from 'art/core/transform';
 import Mode from 'art/modes/current';
-import invariant from 'shared/invariant';
 
 import {TYPES, EVENT_TYPES, childrenAsString} from './ReactARTInternals';
-import type {
-  ReactEventResponder,
-  ReactEventResponderInstance,
-} from 'shared/ReactTypes';
+
+import {DefaultEventPriority} from 'react-reconciler/src/ReactEventPriorities';
 
 const pooledTransform = new Transform();
 
@@ -243,12 +240,14 @@ function applyTextProps(instance, props, prevProps = {}) {
 
 export * from 'react-reconciler/src/ReactFiberHostConfigWithNoPersistence';
 export * from 'react-reconciler/src/ReactFiberHostConfigWithNoHydration';
+export * from 'react-reconciler/src/ReactFiberHostConfigWithNoScopes';
+export * from 'react-reconciler/src/ReactFiberHostConfigWithNoTestSelectors';
+export * from 'react-reconciler/src/ReactFiberHostConfigWithNoMicrotasks';
 
 export function appendInitialChild(parentInstance, child) {
   if (typeof child === 'string') {
     // Noop for string children of Text (eg <Text>{'foo'}{'bar'}</Text>)
-    invariant(false, 'Text children should already be flattened.');
-    return;
+    throw new Error('Text children should already be flattened.');
   }
 
   child.inject(parentInstance);
@@ -281,7 +280,9 @@ export function createInstance(type, props, internalInstanceHandle) {
       break;
   }
 
-  invariant(instance, 'ReactART does not support the type "%s"', type);
+  if (!instance) {
+    throw new Error(`ReactART does not support the type "${type}"`);
+  }
 
   instance._applyProps(instance, props);
 
@@ -306,6 +307,7 @@ export function getPublicInstance(instance) {
 
 export function prepareForCommit() {
   // Noop
+  return null;
 }
 
 export function prepareUpdate(domElement, type, oldProps, newProps) {
@@ -318,10 +320,6 @@ export function resetAfterCommit() {
 
 export function resetTextContent(domElement) {
   // Noop
-}
-
-export function shouldDeprioritizeSubtree(type, props) {
-  return false;
 }
 
 export function getRootHostContext() {
@@ -340,6 +338,10 @@ export function shouldSetTextContent(type, props) {
   return (
     typeof props.children === 'string' || typeof props.children === 'number'
   );
+}
+
+export function getCurrentEventPriority() {
+  return DefaultEventPriority;
 }
 
 // The ART renderer is secondary to the React DOM renderer.
@@ -365,18 +367,18 @@ export function appendChildToContainer(parentInstance, child) {
 }
 
 export function insertBefore(parentInstance, child, beforeChild) {
-  invariant(
-    child !== beforeChild,
-    'ReactART: Can not insert node before itself',
-  );
+  if (child === beforeChild) {
+    throw new Error('ReactART: Can not insert node before itself');
+  }
+
   child.injectBefore(beforeChild);
 }
 
 export function insertInContainerBefore(parentInstance, child, beforeChild) {
-  invariant(
-    child !== beforeChild,
-    'ReactART: Can not insert node before itself',
-  );
+  if (child === beforeChild) {
+    throw new Error('ReactART: Can not insert node before itself');
+  }
+
   child.injectBefore(beforeChild);
 }
 
@@ -426,84 +428,26 @@ export function unhideTextInstance(textInstance, text): void {
   // Noop
 }
 
-export function DEPRECATED_mountResponderInstance(
-  responder: ReactEventResponder<any, any>,
-  responderInstance: ReactEventResponderInstance<any, any>,
-  props: Object,
-  state: Object,
-  instance: Object,
-) {
-  throw new Error('Not yet implemented.');
-}
-
-export function DEPRECATED_unmountResponderInstance(
-  responderInstance: ReactEventResponderInstance<any, any>,
-): void {
-  throw new Error('Not yet implemented.');
-}
-
-export function getFundamentalComponentInstance(fundamentalInstance) {
-  throw new Error('Not yet implemented.');
-}
-
-export function mountFundamentalComponent(fundamentalInstance) {
-  throw new Error('Not yet implemented.');
-}
-
-export function shouldUpdateFundamentalComponent(fundamentalInstance) {
-  throw new Error('Not yet implemented.');
-}
-
-export function updateFundamentalComponent(fundamentalInstance) {
-  throw new Error('Not yet implemented.');
-}
-
-export function unmountFundamentalComponent(fundamentalInstance) {
-  throw new Error('Not yet implemented.');
+export function clearContainer(container) {
+  // TODO Implement this
 }
 
 export function getInstanceFromNode(node) {
-  throw new Error('Not yet implemented.');
+  throw new Error('Not implemented.');
 }
 
-export function beforeRemoveInstance(instance) {
+export function beforeActiveInstanceBlur(internalInstanceHandle: Object) {
   // noop
 }
 
-export function isOpaqueHydratingObject(value: mixed): boolean {
-  throw new Error('Not yet implemented');
+export function afterActiveInstanceBlur() {
+  // noop
 }
 
-export function makeOpaqueHydratingObject(
-  attemptToReadValue: () => void,
-): OpaqueIDType {
-  throw new Error('Not yet implemented.');
+export function preparePortalMount(portalInstance: any): void {
+  // noop
 }
 
-export function makeClientId(): OpaqueIDType {
-  throw new Error('Not yet implemented');
-}
-
-export function makeClientIdInDEV(warnOnAccessInDEV: () => void): OpaqueIDType {
-  throw new Error('Not yet implemented');
-}
-
-export function makeServerId(): OpaqueIDType {
-  throw new Error('Not yet implemented');
-}
-
-export function registerEvent(event: any, rootContainerInstance: any) {
-  throw new Error('Not yet implemented.');
-}
-
-export function mountEventListener(listener: any) {
-  throw new Error('Not yet implemented.');
-}
-
-export function unmountEventListener(listener: any) {
-  throw new Error('Not yet implemented.');
-}
-
-export function validateEventListenerTarget(target: any, listener: any) {
-  throw new Error('Not yet implemented.');
+export function detachDeletedInstance(node: Instance): void {
+  // noop
 }

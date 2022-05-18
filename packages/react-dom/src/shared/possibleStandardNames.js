@@ -5,7 +5,7 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-// When adding attributes to the HTML or SVG whitelist, be sure to
+// When adding attributes to the HTML or SVG allowed attribute list, be sure to
 // also add them to this module to ensure casing and incorrect name
 // warnings.
 const possibleStandardNames = {
@@ -55,9 +55,11 @@ const possibleStandardNames = {
   dir: 'dir',
   disabled: 'disabled',
   disablepictureinpicture: 'disablePictureInPicture',
+  disableremoteplayback: 'disableRemotePlayback',
   download: 'download',
   draggable: 'draggable',
   enctype: 'encType',
+  enterkeyhint: 'enterKeyHint',
   for: 'htmlFor',
   form: 'form',
   formmethod: 'formMethod',
@@ -77,6 +79,8 @@ const possibleStandardNames = {
   'http-equiv': 'httpEquiv',
   icon: 'icon',
   id: 'id',
+  imagesizes: 'imageSizes',
+  imagesrcset: 'imageSrcSet',
   innerhtml: 'innerHTML',
   inputmode: 'inputMode',
   integrity: 'integrity',

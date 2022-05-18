@@ -95,12 +95,25 @@
         text-align: center;
         margin-top: 1rem;
       }
+
+      .prompt,
+      .confirmation {
+        margin-bottom: 0.25rem;
+      }
+
+      .confirmation {
+        font-style: italic;
+      }
+
+      .hidden {
+        display: none;
+      }
     </style>
   </head>
   <body>
     <div id="container" class="container" style="-webkit-user-select: none; -webkit-app-region: drag;">
       <div class="waiting-header">Waiting for React to connect…</div>
-      <div class="boxes">
+      <div class="boxes" style="-webkit-app-region: none;">
         <div class="box">
           <div class="box-header">React Native</div>
           <div class="box-content">
@@ -108,6 +121,7 @@
               id="rn-help-link"
               class="link"
               target="_blank"
+              rel="noopener noreferrer"
               href="https://reactnative.dev/docs/debugging#accessing-the-in-app-developer-menu"
             >in-app developer menu</a> to connect.
           </div>
@@ -115,7 +129,12 @@
         <div class="box">
           <div class="box-header">React DOM</div>
           <div class="box-content">
-            Add one of the following:
+            <div id="box-content-prompt" class="prompt">
+              Add one of the following (click to copy):
+            </div>
+            <div id="box-content-confirmation" class="confirmation hidden">
+              Copied to clipboard.
+            </div>
             <span class="input" contenteditable="true" id="localhost"></span>
             <span class="input" contenteditable="true" id="byip"></span>
             to the top of the page you want to debug,
@@ -123,40 +142,104 @@
             <strong>before</strong> importing React DOM.
           </div>
         </div>
+        <div class="box">
+          <div class="box-header">Profiler</div>
+          <div class="box-content">
+            Open the <a
+              id="profiler"
+              class="link"
+              href="#"
+            >Profiler tab</a> to inspect saved profiles.
+          </div>
+        </div>
         <div id="loading-status">Starting the server…</div>
       </div>
     </div>
     <script>
-      const port = process.env.PORT || 8097;
-      const localIp = require("ip").address();
-      const $ = document.querySelector.bind(document);
+      const fs = require('fs');
+      let options;
+      let useHttps = false;
 
-      function selectAll(event) {
+      try {
+        if (process.env.KEY && process.env.CERT) {
+          options = {
+            key: fs.readFileSync(process.env.KEY),
+            cert: fs.readFileSync(process.env.CERT)
+          };
+          useHttps = true;
+        }
+      } catch (err) {
+        console.error('Failed to process SSL options - ', err);
+        options = undefined;
+      }
+
+      const {clipboard} = require("electron");
+      const host = process.env.HOST || 'localhost';
+      const protocol = useHttps ? 'https' : 'http';
+      const port = Number(process.env.PORT || 8097);
+      const localIp = require("ip").address();
+      const defaultPort = (port === 443 && useHttps) || (port === 80 && !useHttps);
+      const server = defaultPort ? `${protocol}://${host}` : `${protocol}://${host}:${port}`;
+      const serverIp = defaultPort ? `${protocol}://${localIp}` : `${protocol}://${localIp}:${port}`;
+      const $ = document.querySelector.bind(document);
+      
+      let timeoutID;
+      
+      function selectAllAndCopy(event) {
         const element = event.target;
         if (window.getSelection) {
-          const selection = window.getSelection();        
+          const selection = window.getSelection();
           const range = document.createRange();
           range.selectNodeContents(element);
           selection.removeAllRanges();
           selection.addRange(range);
+          clipboard.writeText(event.target.textContent);
+          
+          const $promptDiv = $("#box-content-prompt");
+          const $confirmationDiv = $("#box-content-confirmation");
+          $promptDiv.classList.add('hidden');
+          $confirmationDiv.classList.remove('hidden');
+
+          if (timeoutID) {
+            clearTimeout(timeoutID);
+          }
+
+          timeoutID = setTimeout(() => {
+            $promptDiv.classList.remove('hidden');
+            $confirmationDiv.classList.add('hidden');
+          }, 1000);
         }
       }
 
-      const link = $('#rn-help-link');
-      link.addEventListener('click', event => {
-        event.preventDefault();
-        require('electron').shell.openExternal(link.href);
-      });
+      function openProfiler() {
+        window.devtools
+          .setContentDOMNode(document.getElementById("container"))
+          .openProfiler();
+      }
 
-      const $localhost = $("#localhost");
-      $localhost.innerText = `<script src="http://localhost:${port}"></` + 'script>';
-      $localhost.addEventListener('click', selectAll);
-      $localhost.addEventListener('focus', selectAll);
+      function attachListeners() {
+        const link = $('#rn-help-link');
+        link.addEventListener('click', event => {
+          event.preventDefault();
+          require('electron').shell.openExternal(link.href);
+        });
+  
+        const $localhost = $("#localhost");
+        $localhost.innerText = `<script src="${server}"></` + 'script>';
+        $localhost.addEventListener('click', selectAllAndCopy);
+        $localhost.addEventListener('focus', selectAllAndCopy);
+  
+        const $byIp = $("#byip");
+        $byIp.innerText = `<script src="${serverIp}"></` + 'script>';
+        $byIp.addEventListener('click', selectAllAndCopy);
+        $byIp.addEventListener('focus', selectAllAndCopy);
+  
+        const $profiler = $("#profiler");
+        $profiler.addEventListener('click', openProfiler);
+      };
 
-      const $byIp = $("#byip");
-      $byIp.innerText = `<script src="http://${localIp}:${port}"></` + 'script>';
-      $byIp.addEventListener('click', selectAll);
-      $byIp.addEventListener('focus', selectAll);
+      // Initially attach the listeners
+      attachListeners();
 
       let devtools;
       try {
@@ -170,13 +253,14 @@
       window.devtools = devtools;
       window.server = devtools
         .setContentDOMNode(document.getElementById("container"))
+        .setDisconnectedCallback(attachListeners)
         .setStatusListener(function(status) {
           const element = document.getElementById("loading-status");
           if (element) {
             element.innerText = status;
           }
         })
-        .startServer(port);
+        .startServer(port, host, options);
     </script>
   </body>
 </html>

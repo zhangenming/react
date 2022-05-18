@@ -12,7 +12,9 @@
 let React;
 
 let ReactDOM;
+let ReactDOMClient;
 let Scheduler;
+let act;
 
 const setUntrackedInputValue = Object.getOwnPropertyDescriptor(
   HTMLInputElement.prototype,
@@ -27,6 +29,8 @@ describe('ReactDOMFiberAsync', () => {
     container = document.createElement('div');
     React = require('react');
     ReactDOM = require('react-dom');
+    ReactDOMClient = require('react-dom/client');
+    act = require('jest-react').act;
     Scheduler = require('scheduler');
 
     document.body.appendChild(container);
@@ -127,10 +131,10 @@ describe('ReactDOMFiberAsync', () => {
     expect(ops).toEqual(['A', 'ABCD']);
   });
 
-  it('flushSync throws if already performing work', () => {
+  it('flushSync logs an error if already performing work', () => {
     class Component extends React.Component {
       componentDidUpdate() {
-        ReactDOM.flushSync(() => {});
+        ReactDOM.flushSync();
       }
       render() {
         return null;
@@ -140,20 +144,12 @@ describe('ReactDOMFiberAsync', () => {
     // Initial mount
     ReactDOM.render(<Component />, container);
     // Update
-    expect(() => ReactDOM.render(<Component />, container)).toThrow(
+    expect(() => ReactDOM.render(<Component />, container)).toErrorDev(
       'flushSync was called from inside a lifecycle method',
     );
   });
 
   describe('concurrent mode', () => {
-    beforeEach(() => {
-      jest.resetModules();
-
-      ReactDOM = require('react-dom');
-      Scheduler = require('scheduler');
-    });
-
-    // @gate experimental
     it('does not perform deferred updates synchronously', () => {
       const inputRef = React.createRef();
       const asyncValueRef = React.createRef();
@@ -190,7 +186,7 @@ describe('ReactDOMFiberAsync', () => {
           );
         }
       }
-      const root = ReactDOM.createRoot(container);
+      const root = ReactDOMClient.createRoot(container);
       root.render(<Counter />);
       Scheduler.unstable_flushAll();
       expect(asyncValueRef.current.textContent).toBe('');
@@ -209,9 +205,8 @@ describe('ReactDOMFiberAsync', () => {
       expect(syncValueRef.current.textContent).toBe('hello');
     });
 
-    // @gate experimental
     it('top-level updates are concurrent', () => {
-      const root = ReactDOM.createRoot(container);
+      const root = ReactDOMClient.createRoot(container);
       root.render(<div>Hi</div>);
       expect(container.textContent).toEqual('');
       Scheduler.unstable_flushAll();
@@ -223,7 +218,6 @@ describe('ReactDOMFiberAsync', () => {
       expect(container.textContent).toEqual('Bye');
     });
 
-    // @gate experimental
     it('deep updates (setState) are concurrent', () => {
       let instance;
       class Component extends React.Component {
@@ -234,7 +228,7 @@ describe('ReactDOMFiberAsync', () => {
         }
       }
 
-      const root = ReactDOM.createRoot(container);
+      const root = ReactDOMClient.createRoot(container);
       root.render(<Component />);
       expect(container.textContent).toEqual('');
       Scheduler.unstable_flushAll();
@@ -246,7 +240,6 @@ describe('ReactDOMFiberAsync', () => {
       expect(container.textContent).toEqual('1');
     });
 
-    // @gate experimental
     it('flushSync flushes updates before end of the tick', () => {
       const ops = [];
       let instance;
@@ -265,7 +258,7 @@ describe('ReactDOMFiberAsync', () => {
         }
       }
 
-      const root = ReactDOM.createRoot(container);
+      const root = ReactDOMClient.createRoot(container);
       root.render(<Component />);
       Scheduler.unstable_flushAll();
 
@@ -295,7 +288,7 @@ describe('ReactDOMFiberAsync', () => {
       expect(ops).toEqual(['BC', 'ABCD']);
     });
 
-    // @gate experimental
+    // @gate www
     it('flushControlled flushes updates before yielding to browser', () => {
       let inst;
       class Counter extends React.Component {
@@ -307,7 +300,7 @@ describe('ReactDOMFiberAsync', () => {
           return this.state.counter;
         }
       }
-      const root = ReactDOM.createRoot(container);
+      const root = ReactDOMClient.createRoot(container);
       root.render(<Counter />);
       Scheduler.unstable_flushAll();
       expect(container.textContent).toEqual('0');
@@ -335,7 +328,7 @@ describe('ReactDOMFiberAsync', () => {
       ]);
     });
 
-    // @gate experimental
+    // @gate www
     it('flushControlled does not flush until end of outermost batchedUpdates', () => {
       let inst;
       class Counter extends React.Component {
@@ -366,7 +359,7 @@ describe('ReactDOMFiberAsync', () => {
       ]);
     });
 
-    // @gate experimental
+    // @gate www
     it('flushControlled returns nothing', () => {
       // In the future, we may want to return a thenable "work" object.
       let inst;
@@ -390,108 +383,81 @@ describe('ReactDOMFiberAsync', () => {
       expect(returnValue).toBe(undefined);
     });
 
-    // @gate experimental
-    it('ignores discrete events on a pending removed element', () => {
+    it('ignores discrete events on a pending removed element', async () => {
       const disableButtonRef = React.createRef();
       const submitButtonRef = React.createRef();
 
-      let formSubmitted = false;
-
-      class Form extends React.Component {
-        state = {active: true};
-        disableForm = () => {
-          this.setState({active: false});
-        };
-        submitForm = () => {
-          formSubmitted = true; // This should not get invoked
-        };
-        render() {
-          return (
-            <div>
-              <button onClick={this.disableForm} ref={disableButtonRef}>
-                Disable
-              </button>
-              {this.state.active ? (
-                <button onClick={this.submitForm} ref={submitButtonRef}>
-                  Submit
-                </button>
-              ) : null}
-            </div>
-          );
+      function Form() {
+        const [active, setActive] = React.useState(true);
+        function disableForm() {
+          setActive(false);
         }
+
+        return (
+          <div>
+            <button onClick={disableForm} ref={disableButtonRef}>
+              Disable
+            </button>
+            {active ? <button ref={submitButtonRef}>Submit</button> : null}
+          </div>
+        );
       }
 
-      const root = ReactDOM.createRoot(container);
-      root.render(<Form />);
-      // Flush
-      Scheduler.unstable_flushAll();
+      const root = ReactDOMClient.createRoot(container);
+      await act(async () => {
+        root.render(<Form />);
+      });
 
       const disableButton = disableButtonRef.current;
       expect(disableButton.tagName).toBe('BUTTON');
+
+      const submitButton = submitButtonRef.current;
+      expect(submitButton.tagName).toBe('BUTTON');
 
       // Dispatch a click event on the Disable-button.
       const firstEvent = document.createEvent('Event');
       firstEvent.initEvent('click', true, true);
       disableButton.dispatchEvent(firstEvent);
 
-      // There should now be a pending update to disable the form.
-
-      // This should not have flushed yet since it's in concurrent mode.
-      const submitButton = submitButtonRef.current;
-      expect(submitButton.tagName).toBe('BUTTON');
-
-      // In the meantime, we can dispatch a new client event on the submit button.
-      const secondEvent = document.createEvent('Event');
-      secondEvent.initEvent('click', true, true);
-      // This should force the pending update to flush which disables the submit button before the event is invoked.
-      submitButton.dispatchEvent(secondEvent);
-
-      // Therefore the form should never have been submitted.
-      expect(formSubmitted).toBe(false);
-
-      expect(submitButtonRef.current).toBe(null);
+      // The click event is flushed synchronously, even in concurrent mode.
+      expect(submitButton.current).toBe(undefined);
     });
 
-    // @gate experimental
-    it('ignores discrete events on a pending removed event listener', () => {
+    it('ignores discrete events on a pending removed event listener', async () => {
       const disableButtonRef = React.createRef();
       const submitButtonRef = React.createRef();
 
       let formSubmitted = false;
 
-      class Form extends React.Component {
-        state = {active: true};
-        disableForm = () => {
-          this.setState({active: false});
-        };
-        submitForm = () => {
+      function Form() {
+        const [active, setActive] = React.useState(true);
+        function disableForm() {
+          setActive(false);
+        }
+        function submitForm() {
           formSubmitted = true; // This should not get invoked
-        };
-        disabledSubmitForm = () => {
+        }
+        function disabledSubmitForm() {
           // The form is disabled.
-        };
-        render() {
-          return (
-            <div>
-              <button onClick={this.disableForm} ref={disableButtonRef}>
-                Disable
-              </button>
-              <button
-                onClick={
-                  this.state.active ? this.submitForm : this.disabledSubmitForm
-                }
-                ref={submitButtonRef}>
-                Submit
-              </button>
-            </div>
-          );
         }
+        return (
+          <div>
+            <button onClick={disableForm} ref={disableButtonRef}>
+              Disable
+            </button>
+            <button
+              onClick={active ? submitForm : disabledSubmitForm}
+              ref={submitButtonRef}>
+              Submit
+            </button>
+          </div>
+        );
       }
 
-      const root = ReactDOM.createRoot(container);
-      root.render(<Form />);
-      // Flush
-      Scheduler.unstable_flushAll();
+      const root = ReactDOMClient.createRoot(container);
+      await act(async () => {
+        root.render(<Form />);
+      });
 
       const disableButton = disableButtonRef.current;
       expect(disableButton.tagName).toBe('BUTTON');
@@ -499,7 +465,9 @@ describe('ReactDOMFiberAsync', () => {
       // Dispatch a click event on the Disable-button.
       const firstEvent = document.createEvent('Event');
       firstEvent.initEvent('click', true, true);
-      disableButton.dispatchEvent(firstEvent);
+      await act(async () => {
+        disableButton.dispatchEvent(firstEvent);
+      });
 
       // There should now be a pending update to disable the form.
 
@@ -511,48 +479,44 @@ describe('ReactDOMFiberAsync', () => {
       const secondEvent = document.createEvent('Event');
       secondEvent.initEvent('click', true, true);
       // This should force the pending update to flush which disables the submit button before the event is invoked.
-      submitButton.dispatchEvent(secondEvent);
+      await act(async () => {
+        submitButton.dispatchEvent(secondEvent);
+      });
 
       // Therefore the form should never have been submitted.
       expect(formSubmitted).toBe(false);
     });
 
-    // @gate experimental
-    it('uses the newest discrete events on a pending changed event listener', () => {
+    it('uses the newest discrete events on a pending changed event listener', async () => {
       const enableButtonRef = React.createRef();
       const submitButtonRef = React.createRef();
 
       let formSubmitted = false;
 
-      class Form extends React.Component {
-        state = {active: false};
-        enableForm = () => {
-          this.setState({active: true});
-        };
-        submitForm = () => {
-          formSubmitted = true; // This should happen
-        };
-        render() {
-          return (
-            <div>
-              <button onClick={this.enableForm} ref={enableButtonRef}>
-                Enable
-              </button>
-              <button
-                onClick={this.state.active ? this.submitForm : null}
-                ref={submitButtonRef}>
-                Submit
-              </button>{' '}
-              : null}
-            </div>
-          );
+      function Form() {
+        const [active, setActive] = React.useState(false);
+        function enableForm() {
+          setActive(true);
         }
+        function submitForm() {
+          formSubmitted = true; // This should not get invoked
+        }
+        return (
+          <div>
+            <button onClick={enableForm} ref={enableButtonRef}>
+              Enable
+            </button>
+            <button onClick={active ? submitForm : null} ref={submitButtonRef}>
+              Submit
+            </button>
+          </div>
+        );
       }
 
-      const root = ReactDOM.createRoot(container);
-      root.render(<Form />);
-      // Flush
-      Scheduler.unstable_flushAll();
+      const root = ReactDOMClient.createRoot(container);
+      await act(async () => {
+        root.render(<Form />);
+      });
 
       const enableButton = enableButtonRef.current;
       expect(enableButton.tagName).toBe('BUTTON');
@@ -560,7 +524,9 @@ describe('ReactDOMFiberAsync', () => {
       // Dispatch a click event on the Enable-button.
       const firstEvent = document.createEvent('Event');
       firstEvent.initEvent('click', true, true);
-      enableButton.dispatchEvent(firstEvent);
+      await act(async () => {
+        enableButton.dispatchEvent(firstEvent);
+      });
 
       // There should now be a pending update to enable the form.
 
@@ -572,7 +538,9 @@ describe('ReactDOMFiberAsync', () => {
       const secondEvent = document.createEvent('Event');
       secondEvent.initEvent('click', true, true);
       // This should force the pending update to flush which enables the submit button before the event is invoked.
-      submitButton.dispatchEvent(secondEvent);
+      await act(async () => {
+        submitButton.dispatchEvent(secondEvent);
+      });
 
       // Therefore the form should have been submitted.
       expect(formSubmitted).toBe(true);
@@ -609,30 +577,70 @@ describe('ReactDOMFiberAsync', () => {
     expect(containerC.textContent).toEqual('Finished');
   });
 
-  describe('createBlockingRoot', () => {
-    // @gate experimental
-    it('updates flush without yielding in the next event', () => {
-      const root = ReactDOM.createBlockingRoot(container);
+  it('updates flush without yielding in the next event', () => {
+    const root = ReactDOMClient.createRoot(container);
 
-      function Text(props) {
-        Scheduler.unstable_yieldValue(props.text);
-        return props.text;
+    function Text(props) {
+      Scheduler.unstable_yieldValue(props.text);
+      return props.text;
+    }
+
+    root.render(
+      <>
+        <Text text="A" />
+        <Text text="B" />
+        <Text text="C" />
+      </>,
+    );
+
+    // Nothing should have rendered yet
+    expect(container.textContent).toEqual('');
+
+    // Everything should render immediately in the next event
+    expect(Scheduler).toFlushAndYield(['A', 'B', 'C']);
+    expect(container.textContent).toEqual('ABC');
+  });
+
+  it('unmounted roots should never clear newer root content from a container', () => {
+    const ref = React.createRef();
+
+    function OldApp() {
+      const [value, setValue] = React.useState('old');
+      function hideOnClick() {
+        // Schedule a discrete update.
+        setValue('update');
+        // Synchronously unmount this root.
+        ReactDOM.flushSync(() => oldRoot.unmount());
       }
-
-      root.render(
-        <>
-          <Text text="A" />
-          <Text text="B" />
-          <Text text="C" />
-        </>,
+      return (
+        <button onClick={hideOnClick} ref={ref}>
+          {value}
+        </button>
       );
+    }
 
-      // Nothing should have rendered yet
-      expect(container.textContent).toEqual('');
+    function NewApp() {
+      return <button ref={ref}>new</button>;
+    }
 
-      // Everything should render immediately in the next event
-      expect(Scheduler).toFlushExpired(['A', 'B', 'C']);
-      expect(container.textContent).toEqual('ABC');
+    const oldRoot = ReactDOMClient.createRoot(container);
+    act(() => {
+      oldRoot.render(<OldApp />);
     });
+
+    // Invoke discrete event.
+    ref.current.click();
+
+    // The root should now be unmounted.
+    expect(container.textContent).toBe('');
+
+    // We can now render a new one.
+    const newRoot = ReactDOMClient.createRoot(container);
+    ReactDOM.flushSync(() => {
+      newRoot.render(<NewApp />);
+    });
+    ref.current.click();
+
+    expect(container.textContent).toBe('new');
   });
 });

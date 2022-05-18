@@ -1,8 +1,17 @@
-import React from 'react';
+import * as React from 'react';
+import {Suspense} from 'react';
 import ReactDOM from 'react-dom';
-import ReactFlightDOMClient from 'react-flight-dom-webpack';
-import App from './App';
+import ReactServerDOMReader from 'react-server-dom-webpack';
 
-let data = ReactFlightDOMClient.createFromFetch(fetch('http://localhost:3001'));
+let data = ReactServerDOMReader.createFromFetch(fetch('http://localhost:3001'));
 
-ReactDOM.render(<App data={data} />, document.getElementById('root'));
+function Content() {
+  return data.readRoot();
+}
+
+ReactDOM.render(
+  <Suspense fallback={<h1>Loading...</h1>}>
+    <Content />
+  </Suspense>,
+  document.getElementById('root')
+);

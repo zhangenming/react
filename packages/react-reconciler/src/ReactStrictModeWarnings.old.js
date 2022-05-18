@@ -9,10 +9,12 @@
 
 import type {Fiber} from './ReactInternalTypes';
 
-import {getStackByFiberInDevAndProd} from './ReactFiberComponentStack';
-
-import getComponentName from 'shared/getComponentName';
-import {StrictMode} from './ReactTypeOfMode';
+import {
+  resetCurrentFiber as resetCurrentDebugFiberInDEV,
+  setCurrentFiber as setCurrentDebugFiberInDEV,
+} from './ReactCurrentFiber';
+import getComponentNameFromFiber from 'react-reconciler/src/getComponentNameFromFiber';
+import {StrictLegacyMode} from './ReactTypeOfMode';
 
 type FiberArray = Array<Fiber>;
 type FiberToFiberComponentsMap = Map<Fiber, FiberArray>;
@@ -31,7 +33,7 @@ if (__DEV__) {
 
     let node = fiber;
     while (node !== null) {
-      if (node.mode & StrictMode) {
+      if (node.mode & StrictLegacyMode) {
         maybeStrictRoot = node;
       }
       node = node.return;
@@ -62,7 +64,7 @@ if (__DEV__) {
     fiber: Fiber,
     instance: any,
   ) => {
-    // Dedup strategy: Warn once per component.
+    // Dedupe strategy: Warn once per component.
     if (didWarnAboutUnsafeLifecycles.has(fiber.type)) {
       return;
     }
@@ -76,7 +78,7 @@ if (__DEV__) {
     }
 
     if (
-      fiber.mode & StrictMode &&
+      fiber.mode & StrictLegacyMode &&
       typeof instance.UNSAFE_componentWillMount === 'function'
     ) {
       pendingUNSAFE_ComponentWillMountWarnings.push(fiber);
@@ -90,7 +92,7 @@ if (__DEV__) {
     }
 
     if (
-      fiber.mode & StrictMode &&
+      fiber.mode & StrictLegacyMode &&
       typeof instance.UNSAFE_componentWillReceiveProps === 'function'
     ) {
       pendingUNSAFE_ComponentWillReceivePropsWarnings.push(fiber);
@@ -104,7 +106,7 @@ if (__DEV__) {
     }
 
     if (
-      fiber.mode & StrictMode &&
+      fiber.mode & StrictLegacyMode &&
       typeof instance.UNSAFE_componentWillUpdate === 'function'
     ) {
       pendingUNSAFE_ComponentWillUpdateWarnings.push(fiber);
@@ -117,7 +119,7 @@ if (__DEV__) {
     if (pendingComponentWillMountWarnings.length > 0) {
       pendingComponentWillMountWarnings.forEach(fiber => {
         componentWillMountUniqueNames.add(
-          getComponentName(fiber.type) || 'Component',
+          getComponentNameFromFiber(fiber) || 'Component',
         );
         didWarnAboutUnsafeLifecycles.add(fiber.type);
       });
@@ -128,7 +130,7 @@ if (__DEV__) {
     if (pendingUNSAFE_ComponentWillMountWarnings.length > 0) {
       pendingUNSAFE_ComponentWillMountWarnings.forEach(fiber => {
         UNSAFE_componentWillMountUniqueNames.add(
-          getComponentName(fiber.type) || 'Component',
+          getComponentNameFromFiber(fiber) || 'Component',
         );
         didWarnAboutUnsafeLifecycles.add(fiber.type);
       });
@@ -139,7 +141,7 @@ if (__DEV__) {
     if (pendingComponentWillReceivePropsWarnings.length > 0) {
       pendingComponentWillReceivePropsWarnings.forEach(fiber => {
         componentWillReceivePropsUniqueNames.add(
-          getComponentName(fiber.type) || 'Component',
+          getComponentNameFromFiber(fiber) || 'Component',
         );
         didWarnAboutUnsafeLifecycles.add(fiber.type);
       });
@@ -151,7 +153,7 @@ if (__DEV__) {
     if (pendingUNSAFE_ComponentWillReceivePropsWarnings.length > 0) {
       pendingUNSAFE_ComponentWillReceivePropsWarnings.forEach(fiber => {
         UNSAFE_componentWillReceivePropsUniqueNames.add(
-          getComponentName(fiber.type) || 'Component',
+          getComponentNameFromFiber(fiber) || 'Component',
         );
         didWarnAboutUnsafeLifecycles.add(fiber.type);
       });
@@ -163,7 +165,7 @@ if (__DEV__) {
     if (pendingComponentWillUpdateWarnings.length > 0) {
       pendingComponentWillUpdateWarnings.forEach(fiber => {
         componentWillUpdateUniqueNames.add(
-          getComponentName(fiber.type) || 'Component',
+          getComponentNameFromFiber(fiber) || 'Component',
         );
         didWarnAboutUnsafeLifecycles.add(fiber.type);
       });
@@ -175,7 +177,7 @@ if (__DEV__) {
     if (pendingUNSAFE_ComponentWillUpdateWarnings.length > 0) {
       pendingUNSAFE_ComponentWillUpdateWarnings.forEach(fiber => {
         UNSAFE_componentWillUpdateUniqueNames.add(
-          getComponentName(fiber.type) || 'Component',
+          getComponentNameFromFiber(fiber) || 'Component',
         );
         didWarnAboutUnsafeLifecycles.add(fiber.type);
       });
@@ -191,7 +193,7 @@ if (__DEV__) {
       );
       console.error(
         'Using UNSAFE_componentWillMount in strict mode is not recommended and may indicate bugs in your code. ' +
-          'See https://fb.me/react-unsafe-component-lifecycles for details.\n\n' +
+          'See https://reactjs.org/link/unsafe-component-lifecycles for details.\n\n' +
           '* Move code with side effects to componentDidMount, and set initial state in the constructor.\n' +
           '\nPlease update the following components: %s',
         sortedNames,
@@ -205,11 +207,11 @@ if (__DEV__) {
       console.error(
         'Using UNSAFE_componentWillReceiveProps in strict mode is not recommended ' +
           'and may indicate bugs in your code. ' +
-          'See https://fb.me/react-unsafe-component-lifecycles for details.\n\n' +
+          'See https://reactjs.org/link/unsafe-component-lifecycles for details.\n\n' +
           '* Move data fetching code or side effects to componentDidUpdate.\n' +
           "* If you're updating state whenever props change, " +
           'refactor your code to use memoization techniques or move it to ' +
-          'static getDerivedStateFromProps. Learn more at: https://fb.me/react-derived-state\n' +
+          'static getDerivedStateFromProps. Learn more at: https://reactjs.org/link/derived-state\n' +
           '\nPlease update the following components: %s',
         sortedNames,
       );
@@ -222,7 +224,7 @@ if (__DEV__) {
       console.error(
         'Using UNSAFE_componentWillUpdate in strict mode is not recommended ' +
           'and may indicate bugs in your code. ' +
-          'See https://fb.me/react-unsafe-component-lifecycles for details.\n\n' +
+          'See https://reactjs.org/link/unsafe-component-lifecycles for details.\n\n' +
           '* Move data fetching code or side effects to componentDidUpdate.\n' +
           '\nPlease update the following components: %s',
         sortedNames,
@@ -234,10 +236,10 @@ if (__DEV__) {
 
       console.warn(
         'componentWillMount has been renamed, and is not recommended for use. ' +
-          'See https://fb.me/react-unsafe-component-lifecycles for details.\n\n' +
+          'See https://reactjs.org/link/unsafe-component-lifecycles for details.\n\n' +
           '* Move code with side effects to componentDidMount, and set initial state in the constructor.\n' +
           '* Rename componentWillMount to UNSAFE_componentWillMount to suppress ' +
-          'this warning in non-strict mode. In React 17.x, only the UNSAFE_ name will work. ' +
+          'this warning in non-strict mode. In React 18.x, only the UNSAFE_ name will work. ' +
           'To rename all deprecated lifecycles to their new names, you can run ' +
           '`npx react-codemod rename-unsafe-lifecycles` in your project source folder.\n' +
           '\nPlease update the following components: %s',
@@ -252,13 +254,13 @@ if (__DEV__) {
 
       console.warn(
         'componentWillReceiveProps has been renamed, and is not recommended for use. ' +
-          'See https://fb.me/react-unsafe-component-lifecycles for details.\n\n' +
+          'See https://reactjs.org/link/unsafe-component-lifecycles for details.\n\n' +
           '* Move data fetching code or side effects to componentDidUpdate.\n' +
           "* If you're updating state whenever props change, refactor your " +
           'code to use memoization techniques or move it to ' +
-          'static getDerivedStateFromProps. Learn more at: https://fb.me/react-derived-state\n' +
+          'static getDerivedStateFromProps. Learn more at: https://reactjs.org/link/derived-state\n' +
           '* Rename componentWillReceiveProps to UNSAFE_componentWillReceiveProps to suppress ' +
-          'this warning in non-strict mode. In React 17.x, only the UNSAFE_ name will work. ' +
+          'this warning in non-strict mode. In React 18.x, only the UNSAFE_ name will work. ' +
           'To rename all deprecated lifecycles to their new names, you can run ' +
           '`npx react-codemod rename-unsafe-lifecycles` in your project source folder.\n' +
           '\nPlease update the following components: %s',
@@ -271,10 +273,10 @@ if (__DEV__) {
 
       console.warn(
         'componentWillUpdate has been renamed, and is not recommended for use. ' +
-          'See https://fb.me/react-unsafe-component-lifecycles for details.\n\n' +
+          'See https://reactjs.org/link/unsafe-component-lifecycles for details.\n\n' +
           '* Move data fetching code or side effects to componentDidUpdate.\n' +
           '* Rename componentWillUpdate to UNSAFE_componentWillUpdate to suppress ' +
-          'this warning in non-strict mode. In React 17.x, only the UNSAFE_ name will work. ' +
+          'this warning in non-strict mode. In React 18.x, only the UNSAFE_ name will work. ' +
           'To rename all deprecated lifecycles to their new names, you can run ' +
           '`npx react-codemod rename-unsafe-lifecycles` in your project source folder.\n' +
           '\nPlease update the following components: %s',
@@ -331,23 +333,25 @@ if (__DEV__) {
 
         const uniqueNames = new Set();
         fiberArray.forEach(fiber => {
-          uniqueNames.add(getComponentName(fiber.type) || 'Component');
+          uniqueNames.add(getComponentNameFromFiber(fiber) || 'Component');
           didWarnAboutLegacyContext.add(fiber.type);
         });
 
         const sortedNames = setToSortedString(uniqueNames);
-        const firstComponentStack = getStackByFiberInDevAndProd(firstFiber);
 
-        console.error(
-          'Legacy context API has been detected within a strict-mode tree.' +
-            '\n\nThe old API will be supported in all 16.x releases, but applications ' +
-            'using it should migrate to the new version.' +
-            '\n\nPlease update the following components: %s' +
-            '\n\nLearn more about this warning here: https://fb.me/react-legacy-context' +
-            '%s',
-          sortedNames,
-          firstComponentStack,
-        );
+        try {
+          setCurrentDebugFiberInDEV(firstFiber);
+          console.error(
+            'Legacy context API has been detected within a strict-mode tree.' +
+              '\n\nThe old API will be supported in all 16.x releases, but applications ' +
+              'using it should migrate to the new version.' +
+              '\n\nPlease update the following components: %s' +
+              '\n\nLearn more about this warning here: https://reactjs.org/link/legacy-context',
+            sortedNames,
+          );
+        } finally {
+          resetCurrentDebugFiberInDEV();
+        }
       },
     );
   };

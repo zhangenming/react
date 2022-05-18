@@ -1,6 +1,12 @@
 'use strict';
 
-const {existsSync, readdirSync, unlinkSync} = require('fs');
+const {
+  existsSync,
+  readdirSync,
+  unlinkSync,
+  readFileSync,
+  writeFileSync,
+} = require('fs');
 const Bundles = require('./bundles');
 const {
   asyncCopyTo,
@@ -10,6 +16,8 @@ const {
 } = require('./utils');
 
 const {
+  NODE_ES2015,
+  NODE_ESM,
   UMD_DEV,
   UMD_PROD,
   UMD_PROFILING,
@@ -36,6 +44,10 @@ function getPackageName(name) {
 
 function getBundleOutputPath(bundleType, filename, packageName) {
   switch (bundleType) {
+    case NODE_ES2015:
+      return `build/node_modules/${packageName}/cjs/${filename}`;
+    case NODE_ESM:
+      return `build/node_modules/${packageName}/esm/${filename}`;
     case NODE_DEV:
     case NODE_PROD:
     case NODE_PROFILING:
@@ -61,11 +73,18 @@ function getBundleOutputPath(bundleType, filename, packageName) {
     case RN_FB_PROD:
     case RN_FB_PROFILING:
       switch (packageName) {
+        case 'scheduler':
+        case 'react':
+        case 'react-is':
+        case 'react-test-renderer':
+          return `build/facebook-react-native/${packageName}/cjs/${filename}`;
         case 'react-native-renderer':
           return `build/react-native/implementations/${filename.replace(
             /\.js$/,
             '.fb.js'
           )}`;
+        case 'react-server-native-relay':
+          return `build/facebook-relay/flight/${filename}`;
         default:
           throw new Error('Unknown RN package.');
       }
@@ -115,6 +134,78 @@ function getTarOptions(tgzName, packageName) {
   };
 }
 
+let entryPointsToHasBundle = new Map();
+// eslint-disable-next-line no-for-of-loops/no-for-of-loops
+for (const bundle of Bundles.bundles) {
+  let hasBundle = entryPointsToHasBundle.get(bundle.entry);
+  if (!hasBundle) {
+    const hasNonFBBundleTypes = bundle.bundleTypes.some(
+      type =>
+        type !== FB_WWW_DEV && type !== FB_WWW_PROD && type !== FB_WWW_PROFILING
+    );
+    entryPointsToHasBundle.set(bundle.entry, hasNonFBBundleTypes);
+  }
+}
+
+function filterOutEntrypoints(name) {
+  // Remove entry point files that are not built in this configuration.
+  let jsonPath = `build/node_modules/${name}/package.json`;
+  let packageJSON = JSON.parse(readFileSync(jsonPath));
+  let files = packageJSON.files;
+  let exportsJSON = packageJSON.exports;
+  if (!Array.isArray(files)) {
+    throw new Error('expected all package.json files to contain a files field');
+  }
+  let changed = false;
+  for (let i = 0; i < files.length; i++) {
+    let filename = files[i];
+    let entry =
+      filename === 'index.js'
+        ? name
+        : name + '/' + filename.replace(/\.js$/, '');
+    let hasBundle = entryPointsToHasBundle.get(entry);
+    if (hasBundle === undefined) {
+      // This entry doesn't exist in the bundles. Check if something similar exists.
+      hasBundle =
+        entryPointsToHasBundle.get(entry + '.node') ||
+        entryPointsToHasBundle.get(entry + '.browser');
+    }
+    if (hasBundle === undefined) {
+      // This doesn't exist in the bundles. It's an extra file.
+    } else if (hasBundle === true) {
+      // This is built in this release channel.
+    } else {
+      // This doesn't have any bundleTypes in this release channel.
+      // Let's remove it.
+      files.splice(i, 1);
+      i--;
+      unlinkSync(`build/node_modules/${name}/${filename}`);
+      changed = true;
+      // Remove it from the exports field too if it exists.
+      if (exportsJSON) {
+        if (filename === 'index.js') {
+          delete exportsJSON['.'];
+        } else {
+          delete exportsJSON['./' + filename.replace(/\.js$/, '')];
+        }
+      }
+    }
+
+    // We only export the source directory so Jest and Rollup can access them
+    // during local development and at build time. The files don't exist in the
+    // public builds, so we don't need the export entry, either.
+    const sourceWildcardExport = './src/*';
+    if (exportsJSON && exportsJSON[sourceWildcardExport]) {
+      delete exportsJSON[sourceWildcardExport];
+      changed = true;
+    }
+  }
+  if (changed) {
+    let newJSON = JSON.stringify(packageJSON, null, '  ');
+    writeFileSync(jsonPath, newJSON);
+  }
+}
+
 async function prepareNpmPackage(name) {
   await Promise.all([
     asyncCopyTo('LICENSE', `build/node_modules/${name}/LICENSE`),
@@ -128,6 +219,7 @@ async function prepareNpmPackage(name) {
     ),
     asyncCopyTo(`packages/${name}/npm`, `build/node_modules/${name}`),
   ]);
+  filterOutEntrypoints(name);
   const tgzName = (
     await asyncExecuteCommand(`npm pack build/node_modules/${name}`)
   ).trim();

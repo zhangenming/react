@@ -9,11 +9,12 @@
 
 'use strict';
 
-let React = require('react');
-let ReactDOM = require('react-dom');
-let TestUtils = require('react-dom/test-utils');
+let React;
+let ReactDOM;
+let ReactDOMClient;
 let ReactFeatureFlags;
 let Scheduler;
+let act;
 
 const setUntrackedChecked = Object.getOwnPropertyDescriptor(
   HTMLInputElement.prototype,
@@ -34,6 +35,7 @@ describe('ChangeEventPlugin', () => {
   let container;
 
   beforeEach(() => {
+    jest.resetModules();
     ReactFeatureFlags = require('shared/ReactFeatureFlags');
     // TODO pull this into helper method, reduce repetition.
     // mock the browser APIs which are used in schedule:
@@ -53,7 +55,11 @@ describe('ChangeEventPlugin', () => {
         postMessageCallback(postMessageEvent);
       }
     };
-    jest.resetModules();
+    React = require('react');
+    ReactDOM = require('react-dom');
+    ReactDOMClient = require('react-dom/client');
+    act = require('jest-react').act;
+    Scheduler = require('scheduler');
     container = document.createElement('div');
     document.body.appendChild(container);
   });
@@ -80,6 +86,30 @@ describe('ChangeEventPlugin', () => {
 
     const node = ReactDOM.render(
       <input type="text" onChange={cb} defaultValue="foo" />,
+      container,
+    );
+    node.dispatchEvent(new Event('input', {bubbles: true, cancelable: true}));
+    node.dispatchEvent(new Event('change', {bubbles: true, cancelable: true}));
+
+    if (ReactFeatureFlags.disableInputAttributeSyncing) {
+      // TODO: figure out why. This might be a bug.
+      expect(called).toBe(1);
+    } else {
+      // There should be no React change events because the value stayed the same.
+      expect(called).toBe(0);
+    }
+  });
+
+  it('should consider initial text value to be current (capture)', () => {
+    let called = 0;
+
+    function cb(e) {
+      called++;
+      expect(e.type).toBe('change');
+    }
+
+    const node = ReactDOM.render(
+      <input type="text" onChangeCapture={cb} defaultValue="foo" />,
       container,
     );
     node.dispatchEvent(new Event('input', {bubbles: true, cancelable: true}));
@@ -467,19 +497,8 @@ describe('ChangeEventPlugin', () => {
   });
 
   describe('concurrent mode', () => {
-    beforeEach(() => {
-      jest.resetModules();
-      ReactFeatureFlags = require('shared/ReactFeatureFlags');
-
-      React = require('react');
-      ReactDOM = require('react-dom');
-      TestUtils = require('react-dom/test-utils');
-      Scheduler = require('scheduler');
-    });
-
-    // @gate experimental
     it('text input', () => {
-      const root = ReactDOM.createRoot(container);
+      const root = ReactDOMClient.createRoot(container);
       let input;
 
       class ControlledInput extends React.Component {
@@ -520,9 +539,8 @@ describe('ChangeEventPlugin', () => {
       expect(input.value).toBe('changed [!]');
     });
 
-    // @gate experimental
     it('checkbox input', () => {
-      const root = ReactDOM.createRoot(container);
+      const root = ReactDOMClient.createRoot(container);
       let input;
 
       class ControlledInput extends React.Component {
@@ -576,9 +594,8 @@ describe('ChangeEventPlugin', () => {
       expect(input.checked).toBe(false);
     });
 
-    // @gate experimental
     it('textarea', () => {
-      const root = ReactDOM.createRoot(container);
+      const root = ReactDOMClient.createRoot(container);
       let textarea;
 
       class ControlledTextarea extends React.Component {
@@ -619,9 +636,8 @@ describe('ChangeEventPlugin', () => {
       expect(textarea.value).toBe('changed [!]');
     });
 
-    // @gate experimental
     it('parent of input', () => {
-      const root = ReactDOM.createRoot(container);
+      const root = ReactDOMClient.createRoot(container);
       let input;
 
       class ControlledInput extends React.Component {
@@ -666,9 +682,8 @@ describe('ChangeEventPlugin', () => {
       expect(input.value).toBe('changed [!]');
     });
 
-    // @gate experimental
-    it('is async for non-input events', () => {
-      const root = ReactDOM.createRoot(container);
+    it('is sync for non-input events', async () => {
+      const root = ReactDOMClient.createRoot(container);
       let input;
 
       class ControlledInput extends React.Component {
@@ -706,29 +721,17 @@ describe('ChangeEventPlugin', () => {
       input.dispatchEvent(
         new Event('click', {bubbles: true, cancelable: true}),
       );
-      // Nothing should have changed
-      expect(Scheduler).toHaveYielded([]);
-      expect(input.value).toBe('initial');
 
-      // Flush callbacks.
-      // Now the click update has flushed.
-      expect(Scheduler).toFlushAndYield(['render: ']);
+      // Flush microtask queue.
+      await null;
+      expect(Scheduler).toHaveYielded(['render: ']);
       expect(input.value).toBe('');
     });
 
-    // @gate experimental
     it('mouse enter/leave should be user-blocking but not discrete', async () => {
-      // This is currently behind a feature flag
-      jest.resetModules();
-      React = require('react');
-      ReactDOM = require('react-dom');
-      TestUtils = require('react-dom/test-utils');
-      Scheduler = require('scheduler');
-
-      const {act} = TestUtils;
       const {useState} = React;
 
-      const root = ReactDOM.createRoot(container);
+      const root = ReactDOMClient.createRoot(container);
 
       const target = React.createRef(null);
       function Foo() {
@@ -753,11 +756,12 @@ describe('ChangeEventPlugin', () => {
         mouseOverEvent.initEvent('mouseover', true, true);
         target.current.dispatchEvent(mouseOverEvent);
 
-        // 3s should be enough to expire the updates
-        Scheduler.unstable_advanceTime(3000);
-        expect(Scheduler).toFlushExpired([]);
-        expect(container.textContent).toEqual('hovered');
+        // Flush discrete updates
+        ReactDOM.flushSync();
+        // Since mouse enter/leave is not discrete, should not have updated yet
+        expect(container.textContent).toEqual('not hovered');
       });
+      expect(container.textContent).toEqual('hovered');
     });
   });
 });

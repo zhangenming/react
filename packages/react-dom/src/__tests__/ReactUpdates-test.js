@@ -11,6 +11,7 @@
 
 let React;
 let ReactDOM;
+let ReactDOMClient;
 let ReactTestUtils;
 let act;
 let Scheduler;
@@ -20,10 +21,24 @@ describe('ReactUpdates', () => {
     jest.resetModules();
     React = require('react');
     ReactDOM = require('react-dom');
+    ReactDOMClient = require('react-dom/client');
     ReactTestUtils = require('react-dom/test-utils');
-    act = ReactTestUtils.act;
+    act = require('jest-react').act;
     Scheduler = require('scheduler');
   });
+
+  // Note: This is based on a similar component we use in www. We can delete
+  // once the extra div wrapper is no longer necessary.
+  function LegacyHiddenDiv({children, mode}) {
+    return (
+      <div hidden={mode === 'hidden'}>
+        <React.unstable_LegacyHidden
+          mode={mode === 'hidden' ? 'unstable-defer-without-hiding' : mode}>
+          {children}
+        </React.unstable_LegacyHidden>
+      </div>
+    );
+  }
 
   it('should batch state when updating state twice', () => {
     let updateCount = 0;
@@ -1287,7 +1302,7 @@ describe('ReactUpdates', () => {
     expect(ops).toEqual(['Foo', 'Bar', 'Baz']);
   });
 
-  // @gate experimental
+  // @gate www
   it('delays sync updates inside hidden subtrees in Concurrent Mode', () => {
     const container = document.createElement('div');
 
@@ -1311,15 +1326,15 @@ describe('ReactUpdates', () => {
       });
       return (
         <div>
-          <div hidden={true}>
+          <LegacyHiddenDiv mode="hidden">
             <Bar />
-          </div>
+          </LegacyHiddenDiv>
           <Baz />
         </div>
       );
     }
 
-    const root = ReactDOM.createRoot(container);
+    const root = ReactDOMClient.createRoot(container);
     let hiddenDiv;
     act(() => {
       root.render(<Foo />);
@@ -1581,6 +1596,7 @@ describe('ReactUpdates', () => {
     });
   });
 
+  // TODO: Replace this branch with @gate pragmas
   if (__DEV__) {
     it('warns about a deferred infinite update loop with useEffect', () => {
       function NonTerminating() {
@@ -1672,83 +1688,34 @@ describe('ReactUpdates', () => {
     });
   }
 
-  if (__DEV__) {
-    it('should properly trace interactions within batched udpates', () => {
-      const SchedulerTracing = require('scheduler/tracing');
+  it('prevents infinite update loop triggered by synchronous updates in useEffect', () => {
+    // Ignore flushSync warning
+    spyOnDev(console, 'error');
 
-      let expectedInteraction;
+    function NonTerminating() {
+      const [step, setStep] = React.useState(0);
+      React.useEffect(() => {
+        // Other examples of synchronous updates in useEffect are imperative
+        // event dispatches like `el.focus`, or `useSyncExternalStore`, which
+        // may schedule a synchronous update upon subscribing if it detects
+        // that the store has been mutated since the initial render.
+        //
+        // (Originally I wrote this test using `el.focus` but those errors
+        // get dispatched in a JSDOM event and I don't know how to "catch" those
+        // so that they don't fail the test.)
+        ReactDOM.flushSync(() => {
+          setStep(step + 1);
+        });
+      }, [step]);
+      return step;
+    }
 
-      const container = document.createElement('div');
-
-      const Component = jest.fn(() => {
-        expect(expectedInteraction).toBeDefined();
-
-        const interactions = SchedulerTracing.unstable_getCurrent();
-        expect(interactions.size).toBe(1);
-        expect(interactions).toContain(expectedInteraction);
-
-        return null;
+    const container = document.createElement('div');
+    const root = ReactDOMClient.createRoot(container);
+    expect(() => {
+      ReactDOM.flushSync(() => {
+        root.render(<NonTerminating />);
       });
-
-      ReactDOM.unstable_batchedUpdates(() => {
-        SchedulerTracing.unstable_trace(
-          'mount traced inside a batched update',
-          1,
-          () => {
-            const interactions = SchedulerTracing.unstable_getCurrent();
-            expect(interactions.size).toBe(1);
-            expectedInteraction = Array.from(interactions)[0];
-
-            ReactDOM.render(<Component />, container);
-          },
-        );
-      });
-
-      ReactDOM.unstable_batchedUpdates(() => {
-        SchedulerTracing.unstable_trace(
-          'update traced inside a batched update',
-          2,
-          () => {
-            const interactions = SchedulerTracing.unstable_getCurrent();
-            expect(interactions.size).toBe(1);
-            expectedInteraction = Array.from(interactions)[0];
-
-            ReactDOM.render(<Component />, container);
-          },
-        );
-      });
-
-      const secondContainer = document.createElement('div');
-
-      SchedulerTracing.unstable_trace(
-        'mount traced outside a batched update',
-        3,
-        () => {
-          ReactDOM.unstable_batchedUpdates(() => {
-            const interactions = SchedulerTracing.unstable_getCurrent();
-            expect(interactions.size).toBe(1);
-            expectedInteraction = Array.from(interactions)[0];
-
-            ReactDOM.render(<Component />, secondContainer);
-          });
-        },
-      );
-
-      SchedulerTracing.unstable_trace(
-        'update traced outside a batched update',
-        4,
-        () => {
-          ReactDOM.unstable_batchedUpdates(() => {
-            const interactions = SchedulerTracing.unstable_getCurrent();
-            expect(interactions.size).toBe(1);
-            expectedInteraction = Array.from(interactions)[0];
-
-            ReactDOM.render(<Component />, container);
-          });
-        },
-      );
-
-      expect(Component).toHaveBeenCalledTimes(4);
-    });
-  }
+    }).toThrow('Maximum update depth exceeded');
+  });
 });

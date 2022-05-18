@@ -8,18 +8,29 @@
  */
 
 import * as React from 'react';
-import {useContext} from 'react';
+import {useContext, useMemo} from 'react';
 import {SettingsContext} from './SettingsContext';
 import {StoreContext} from '../context';
 import {CHANGE_LOG_URL} from 'react-devtools-shared/src/constants';
 
 import styles from './SettingsShared.css';
 
+function getChangeLogUrl(version: ?string): string | null {
+  if (!version) {
+    return null;
+  }
+
+  // Version numbers are in the format of: <major>.<minor>.<patch>-<sha>
+  // e.g. "4.23.0-f0dd459e0"
+  // GitHub CHANGELOG headers are in the format of: <major>.<minor>.<patch>
+  // but the "." are stripped from anchor tags, becomming: <major><minor><patch>
+  const versionAnchor = version.replace(/^(\d+)\.(\d+)\.(\d+).*/, '$1$2$3');
+  return `${CHANGE_LOG_URL}#${versionAnchor}`;
+}
+
 export default function GeneralSettings(_: {||}) {
   const {
-    appendComponentStack,
     displayDensity,
-    setAppendComponentStack,
     setDisplayDensity,
     setTheme,
     setTraceUpdatesEnabled,
@@ -27,7 +38,11 @@ export default function GeneralSettings(_: {||}) {
     traceUpdatesEnabled,
   } = useContext(SettingsContext);
 
-  const {supportsTraceUpdates} = useContext(StoreContext);
+  const {backendVersion, supportsTraceUpdates} = useContext(StoreContext);
+  const frontendVersion = process.env.DEVTOOLS_VERSION;
+
+  const showBackendVersion =
+    backendVersion && backendVersion !== frontendVersion;
 
   return (
     <div className={styles.Settings}>
@@ -71,29 +86,52 @@ export default function GeneralSettings(_: {||}) {
         </div>
       )}
 
-      <div className={styles.Setting}>
-        <label>
-          <input
-            type="checkbox"
-            checked={appendComponentStack}
-            onChange={({currentTarget}) =>
-              setAppendComponentStack(currentTarget.checked)
-            }
-          />{' '}
-          Append component stacks to console warnings and errors.
-        </label>
-      </div>
-
       <div className={styles.ReleaseNotes}>
+        {showBackendVersion && (
+          <div>
+            <ul className={styles.VersionsList}>
+              <li>
+                <Version
+                  label="DevTools backend version:"
+                  version={backendVersion}
+                />
+              </li>
+              <li>
+                <Version
+                  label="DevTools frontend version:"
+                  version={frontendVersion}
+                />
+              </li>
+            </ul>
+          </div>
+        )}
+        {!showBackendVersion && (
+          <Version label="DevTools version:" version={frontendVersion} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Version({label, version}: {|label: string, version: ?string|}) {
+  const changelogLink = useMemo(() => {
+    return getChangeLogUrl(version);
+  }, [version]);
+
+  if (version == null) {
+    return null;
+  } else {
+    return (
+      <>
+        {label}{' '}
         <a
           className={styles.ReleaseNotesLink}
           target="_blank"
           rel="noopener noreferrer"
-          href={CHANGE_LOG_URL}>
-          View release notes
-        </a>{' '}
-        for DevTools version {process.env.DEVTOOLS_VERSION}
-      </div>
-    </div>
-  );
+          href={changelogLink}>
+          {version}
+        </a>
+      </>
+    );
+  }
 }

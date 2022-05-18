@@ -9,9 +9,12 @@
 
 import type {ReactNodeList} from 'shared/ReactTypes';
 import type {Container} from './ReactDOMHostConfig';
+import type {
+  RootType,
+  HydrateRootOptions,
+  CreateRootOptions,
+} from './ReactDOMRoot';
 
-import '../shared/checkReact';
-import './ReactDOMClientInjection';
 import {
   findDOMNode,
   render,
@@ -19,33 +22,33 @@ import {
   unstable_renderSubtreeIntoContainer,
   unmountComponentAtNode,
 } from './ReactDOMLegacy';
-import {createRoot, createBlockingRoot, isValidContainer} from './ReactDOMRoot';
-import {useEvent} from './ReactDOMUseEvent';
+import {
+  createRoot as createRootImpl,
+  hydrateRoot as hydrateRootImpl,
+  isValidContainer,
+} from './ReactDOMRoot';
+import {createEventHandle} from './ReactDOMEventHandle';
 
 import {
-  batchedEventUpdates,
   batchedUpdates,
   discreteUpdates,
-  flushDiscreteUpdates,
-  flushSync,
+  flushSync as flushSyncWithoutWarningIfAlreadyRendering,
+  isAlreadyRendering,
   flushControlled,
   injectIntoDevTools,
-  flushPassiveEffects,
-  IsThisRendererActing,
   attemptSynchronousHydration,
-  attemptUserBlockingHydration,
+  attemptDiscreteHydration,
   attemptContinuousHydration,
   attemptHydrationAtCurrentPriority,
 } from 'react-reconciler/src/ReactFiberReconciler';
+import {
+  runWithPriority,
+  getCurrentUpdatePriority,
+} from 'react-reconciler/src/ReactEventPriorities';
 import {createPortal as createPortalImpl} from 'react-reconciler/src/ReactPortal';
 import {canUseDOM} from 'shared/ExecutionEnvironment';
-import {
-  eventNameDispatchConfigs,
-  injectEventPluginsByName,
-} from 'legacy-events/EventPluginRegistry';
 import ReactVersion from 'shared/ReactVersion';
-import invariant from 'shared/invariant';
-import {warnUnstableRenderSubtreeIntoContainer} from 'shared/ReactFeatureFlags';
+import {enableNewReconciler} from 'shared/ReactFeatureFlags';
 
 import {
   getInstanceFromNode,
@@ -54,13 +57,13 @@ import {
   getClosestInstanceFromNode,
 } from './ReactDOMComponentTree';
 import {restoreControlledState} from './ReactDOMComponent';
-import {dispatchEvent} from '../events/ReactDOMEventListener';
 import {
   setAttemptSynchronousHydration,
-  setAttemptUserBlockingHydration,
+  setAttemptDiscreteHydration,
   setAttemptContinuousHydration,
   setAttemptHydrationAtCurrentPriority,
-  queueExplicitHydrationTarget,
+  setGetCurrentUpdatePriority,
+  setAttemptHydrationAtPriority,
 } from '../events/ReactDOMEventReplaying';
 import {setBatchingImplementation} from '../events/ReactDOMUpdateBatching';
 import {
@@ -70,12 +73,11 @@ import {
 } from '../events/ReactDOMControlledComponent';
 
 setAttemptSynchronousHydration(attemptSynchronousHydration);
-setAttemptUserBlockingHydration(attemptUserBlockingHydration);
+setAttemptDiscreteHydration(attemptDiscreteHydration);
 setAttemptContinuousHydration(attemptContinuousHydration);
 setAttemptHydrationAtCurrentPriority(attemptHydrationAtCurrentPriority);
-
-let didWarnAboutUnstableCreatePortal = false;
-let didWarnAboutUnstableRenderSubtreeIntoContainer = false;
+setGetCurrentUpdatePriority(getCurrentUpdatePriority);
+setAttemptHydrationAtPriority(runWithPriority);
 
 if (__DEV__) {
   if (
@@ -91,7 +93,7 @@ if (__DEV__) {
   ) {
     console.error(
       'React depends on Map and Set built-in types. Make sure that you load a ' +
-        'polyfill in older browsers. https://fb.me/react-polyfills',
+        'polyfill in older browsers. https://reactjs.org/link/react-polyfills',
     );
   }
 }
@@ -100,28 +102,21 @@ setRestoreImplementation(restoreControlledState);
 setBatchingImplementation(
   batchedUpdates,
   discreteUpdates,
-  flushDiscreteUpdates,
-  batchedEventUpdates,
+  flushSyncWithoutWarningIfAlreadyRendering,
 );
 
 function createPortal(
   children: ReactNodeList,
-  container: Container,
+  container: Element | DocumentFragment,
   key: ?string = null,
 ): React$Portal {
-  invariant(
-    isValidContainer(container),
-    'Target container is not a DOM element.',
-  );
+  if (!isValidContainer(container)) {
+    throw new Error('Target container is not a DOM element.');
+  }
+
   // TODO: pass ReactDOM portal implementation as third argument
   // $FlowFixMe The Flow type is opaque but there's no way to actually create it.
   return createPortalImpl(children, container, null, key);
-}
-
-function scheduleHydration(target: Node) {
-  if (target) {
-    queueExplicitHydrationTarget(target);
-  }
 }
 
 function renderSubtreeIntoContainer(
@@ -130,19 +125,6 @@ function renderSubtreeIntoContainer(
   containerNode: Container,
   callback: ?Function,
 ) {
-  if (__DEV__) {
-    if (
-      warnUnstableRenderSubtreeIntoContainer &&
-      !didWarnAboutUnstableRenderSubtreeIntoContainer
-    ) {
-      didWarnAboutUnstableRenderSubtreeIntoContainer = true;
-      console.warn(
-        'ReactDOM.unstable_renderSubtreeIntoContainer() is deprecated ' +
-          'and will be removed in a future major release. Consider using ' +
-          'React Portals instead.',
-      );
-    }
-  }
   return unstable_renderSubtreeIntoContainer(
     parentComponent,
     element,
@@ -151,41 +133,69 @@ function renderSubtreeIntoContainer(
   );
 }
 
-function unstable_createPortal(
-  children: ReactNodeList,
-  container: Container,
-  key: ?string = null,
-) {
-  if (__DEV__) {
-    if (!didWarnAboutUnstableCreatePortal) {
-      didWarnAboutUnstableCreatePortal = true;
-      console.warn(
-        'The ReactDOM.unstable_createPortal() alias has been deprecated, ' +
-          'and will be removed in React 17+. Update your code to use ' +
-          'ReactDOM.createPortal() instead. It has the exact same API, ' +
-          'but without the "unstable_" prefix.',
-      );
-    }
-  }
-  return createPortal(children, container, key);
-}
-
 const Internals = {
-  // Keep in sync with ReactDOMUnstableNativeDependencies.js
-  // ReactTestUtils.js, and ReactTestUtilsAct.js. This is an array for better minification.
+  usingClientEntryPoint: false,
+  // Keep in sync with ReactTestUtils.js.
+  // This is an array for better minification.
   Events: [
     getInstanceFromNode,
     getNodeFromInstance,
     getFiberCurrentPropsFromNode,
-    injectEventPluginsByName,
-    eventNameDispatchConfigs,
     enqueueStateRestore,
     restoreStateIfNeeded,
-    dispatchEvent,
-    flushPassiveEffects,
-    IsThisRendererActing,
+    batchedUpdates,
   ],
 };
+
+function createRoot(
+  container: Element | Document | DocumentFragment,
+  options?: CreateRootOptions,
+): RootType {
+  if (__DEV__) {
+    if (!Internals.usingClientEntryPoint && !__UMD__) {
+      console.error(
+        'You are importing createRoot from "react-dom" which is not supported. ' +
+          'You should instead import it from "react-dom/client".',
+      );
+    }
+  }
+  return createRootImpl(container, options);
+}
+
+function hydrateRoot(
+  container: Document | Element,
+  initialChildren: ReactNodeList,
+  options?: HydrateRootOptions,
+): RootType {
+  if (__DEV__) {
+    if (!Internals.usingClientEntryPoint && !__UMD__) {
+      console.error(
+        'You are importing hydrateRoot from "react-dom" which is not supported. ' +
+          'You should instead import it from "react-dom/client".',
+      );
+    }
+  }
+  return hydrateRootImpl(container, initialChildren, options);
+}
+
+// Overload the definition to the two valid signatures.
+// Warning, this opts-out of checking the function body.
+declare function flushSync<R>(fn: () => R): R;
+// eslint-disable-next-line no-redeclare
+declare function flushSync(): void;
+// eslint-disable-next-line no-redeclare
+function flushSync(fn) {
+  if (__DEV__) {
+    if (isAlreadyRendering()) {
+      console.error(
+        'flushSync was called from inside a lifecycle method. React cannot ' +
+          'flush when React is already rendering. Consider moving this call to ' +
+          'a scheduler task or micro task.',
+      );
+    }
+  }
+  return flushSyncWithoutWarningIfAlreadyRendering(fn);
+}
 
 export {
   createPortal,
@@ -200,19 +210,15 @@ export {
   unmountComponentAtNode,
   // exposeConcurrentModeAPIs
   createRoot,
-  createBlockingRoot,
-  discreteUpdates as unstable_discreteUpdates,
-  flushDiscreteUpdates as unstable_flushDiscreteUpdates,
+  hydrateRoot,
   flushControlled as unstable_flushControlled,
-  scheduleHydration as unstable_scheduleHydration,
   // Disabled behind disableUnstableRenderSubtreeIntoContainer
   renderSubtreeIntoContainer as unstable_renderSubtreeIntoContainer,
-  // Disabled behind disableUnstableCreatePortal
-  // Temporary alias since we already shipped React 16 RC with it.
-  // TODO: remove in React 17.
-  unstable_createPortal,
-  // enableUseEventAPI
-  useEvent as unstable_useEvent,
+  // enableCreateEventHandleAPI
+  createEventHandle as unstable_createEventHandle,
+  // TODO: Remove this once callers migrate to alternatives.
+  // This should only be used by React internals.
+  runWithPriority as unstable_runWithPriority,
 };
 
 const foundDevTools = injectIntoDevTools({
@@ -237,10 +243,10 @@ if (__DEV__) {
         console.info(
           '%cDownload the React DevTools ' +
             'for a better development experience: ' +
-            'https://fb.me/react-devtools' +
+            'https://reactjs.org/link/react-devtools' +
             (protocol === 'file:'
               ? '\nYou might need to use a local HTTP server (instead of file://): ' +
-                'https://fb.me/react-devtools-faq'
+                'https://reactjs.org/link/react-devtools-faq'
               : ''),
           'font-weight:bold',
         );
@@ -248,3 +254,5 @@ if (__DEV__) {
     }
   }
 }
+
+export const unstable_isNewReconciler = enableNewReconciler;

@@ -13,7 +13,6 @@ let React;
 let ReactDOM;
 let ReactDOMServer;
 let ReactTestUtils;
-const ReactFeatureFlags = require('shared/ReactFeatureFlags');
 
 describe('ReactDOM', () => {
   beforeEach(() => {
@@ -355,30 +354,11 @@ describe('ReactDOM', () => {
     document.body.appendChild(container);
     try {
       ReactDOM.render(<Wrapper />, container);
-      let expected;
 
-      if (
-        ReactFeatureFlags.enableModernEventSystem &
-        ReactFeatureFlags.enableLegacyFBSupport
-      ) {
-        // We expect to duplicate the 2nd handler because this test is
-        // not really designed around how the legacy FB support system works.
-        // This is because the above test sync fires a click() event
-        // during that of another click event, which causes the FB support system
-        // to duplicate adding an event listener. In practice this would never
-        // happen, as we only apply the legacy FB logic for "click" events,
-        // which would never stack this way in product code.
-        expected = [
-          '1st node clicked',
-          "2nd node clicked imperatively from 1st's handler",
-          "2nd node clicked imperatively from 1st's handler",
-        ];
-      } else {
-        expected = [
-          '1st node clicked',
-          "2nd node clicked imperatively from 1st's handler",
-        ];
-      }
+      const expected = [
+        '1st node clicked',
+        "2nd node clicked imperatively from 1st's handler",
+      ];
 
       expect(actual).toEqual(expected);
     } finally {
@@ -425,49 +405,6 @@ describe('ReactDOM', () => {
 
     if (__DEV__) {
       ReactDOM.render(<App />, container);
-    }
-  });
-
-  it('throws in DEV if jsdom is destroyed by the time setState() is called', () => {
-    class App extends React.Component {
-      state = {x: 1};
-      componentDidUpdate() {}
-      render() {
-        return <div />;
-      }
-    }
-    const container = document.createElement('div');
-    const instance = ReactDOM.render(<App />, container);
-    const documentDescriptor = Object.getOwnPropertyDescriptor(
-      global,
-      'document',
-    );
-    try {
-      // Emulate jsdom environment cleanup.
-      // This is roughly what happens if the test finished and then
-      // an asynchronous callback tried to setState() after this.
-      delete global.document;
-
-      // The error we're interested in is thrown by invokeGuardedCallback, which
-      // in DEV is used 1) to replay a failed begin phase, or 2) when calling
-      // lifecycle methods. We're triggering the second case here.
-      const fn = () => instance.setState({x: 2});
-      if (__DEV__) {
-        expect(fn).toThrow(
-          'The `document` global was defined when React was initialized, but is not ' +
-            'defined anymore. This can happen in a test environment if a component ' +
-            'schedules an update from an asynchronous callback, but the test has already ' +
-            'finished running. To solve this, you can either unmount the component at ' +
-            'the end of your test (and ensure that any asynchronous operations get ' +
-            'canceled in `componentWillUnmount`), or you can change the test itself ' +
-            'to be asynchronous.',
-        );
-      } else {
-        expect(fn).not.toThrow();
-      }
-    } finally {
-      // Don't break other tests.
-      Object.defineProperty(global, 'document', documentDescriptor);
     }
   });
 

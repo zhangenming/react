@@ -21,18 +21,21 @@ import {
 import AutoSizer from 'react-virtualized-auto-sizer';
 import {FixedSizeList} from 'react-window';
 import {TreeDispatcherContext, TreeStateContext} from './TreeContext';
+import Icon from '../Icon';
 import {SettingsContext} from '../Settings/SettingsContext';
-import {BridgeContext, StoreContext} from '../context';
-import ElementView from './Element';
+import {BridgeContext, StoreContext, OptionsContext} from '../context';
+import Element from './Element';
 import InspectHostNodesToggle from './InspectHostNodesToggle';
 import OwnersStack from './OwnersStack';
-import SearchInput from './SearchInput';
+import ComponentSearchInput from './ComponentSearchInput';
 import SettingsModalContextToggle from 'react-devtools-shared/src/devtools/views/Settings/SettingsModalContextToggle';
 import SelectedTreeHighlight from './SelectedTreeHighlight';
 import TreeFocusedContext from './TreeFocusedContext';
-import {useHighlightNativeElement} from '../hooks';
-
+import {useHighlightNativeElement, useSubscription} from '../hooks';
+import {clearErrorsAndWarnings as clearErrorsAndWarningsAPI} from 'react-devtools-shared/src/backendAPI';
 import styles from './Tree.css';
+import ButtonIcon from '../ButtonIcon';
+import Button from '../Button';
 
 // Never indent more than this number of pixels (even if we have the room).
 const DEFAULT_INDENTATION_SIZE = 12;
@@ -59,6 +62,7 @@ export default function Tree(props: Props) {
   } = useContext(TreeStateContext);
   const bridge = useContext(BridgeContext);
   const store = useContext(StoreContext);
+  const {hideSettings} = useContext(OptionsContext);
   const [isNavigatingWithKeyboard, setIsNavigatingWithKeyboard] = useState(
     false,
   );
@@ -71,7 +75,7 @@ export default function Tree(props: Props) {
 
   const [treeFocused, setTreeFocused] = useState<boolean>(false);
 
-  const {lineHeight} = useContext(SettingsContext);
+  const {lineHeight, showInlineWarningsAndErrors} = useContext(SettingsContext);
 
   // Make sure a newly selected element is visible in the list.
   // This is helpful for things like the owners list and search.
@@ -122,15 +126,15 @@ export default function Tree(props: Props) {
         return;
       }
 
-      // TODO We should ignore arrow keys if the focus is outside of DevTools.
-      // Otherwise the inline (embedded) DevTools might change selection unexpectedly,
-      // e.g. when a text input or a select has focus.
-
       let element;
       switch (event.key) {
         case 'ArrowDown':
           event.preventDefault();
-          dispatch({type: 'SELECT_NEXT_ELEMENT_IN_TREE'});
+          if (event.altKey) {
+            dispatch({type: 'SELECT_NEXT_SIBLING_IN_TREE'});
+          } else {
+            dispatch({type: 'SELECT_NEXT_ELEMENT_IN_TREE'});
+          }
           break;
         case 'ArrowLeft':
           event.preventDefault();
@@ -139,10 +143,16 @@ export default function Tree(props: Props) {
               ? store.getElementByID(selectedElementID)
               : null;
           if (element !== null) {
-            if (element.children.length > 0 && !element.isCollapsed) {
-              store.toggleIsCollapsed(element.id, true);
+            if (event.altKey) {
+              if (element.ownerID !== null) {
+                dispatch({type: 'SELECT_OWNER_LIST_PREVIOUS_ELEMENT_IN_TREE'});
+              }
             } else {
-              dispatch({type: 'SELECT_PARENT_ELEMENT_IN_TREE'});
+              if (element.children.length > 0 && !element.isCollapsed) {
+                store.toggleIsCollapsed(element.id, true);
+              } else {
+                dispatch({type: 'SELECT_PARENT_ELEMENT_IN_TREE'});
+              }
             }
           }
           break;
@@ -153,16 +163,24 @@ export default function Tree(props: Props) {
               ? store.getElementByID(selectedElementID)
               : null;
           if (element !== null) {
-            if (element.children.length > 0 && element.isCollapsed) {
-              store.toggleIsCollapsed(element.id, false);
+            if (event.altKey) {
+              dispatch({type: 'SELECT_OWNER_LIST_NEXT_ELEMENT_IN_TREE'});
             } else {
-              dispatch({type: 'SELECT_CHILD_ELEMENT_IN_TREE'});
+              if (element.children.length > 0 && element.isCollapsed) {
+                store.toggleIsCollapsed(element.id, false);
+              } else {
+                dispatch({type: 'SELECT_CHILD_ELEMENT_IN_TREE'});
+              }
             }
           }
           break;
         case 'ArrowUp':
           event.preventDefault();
-          dispatch({type: 'SELECT_PREVIOUS_ELEMENT_IN_TREE'});
+          if (event.altKey) {
+            dispatch({type: 'SELECT_PREVIOUS_SIBLING_IN_TREE'});
+          } else {
+            dispatch({type: 'SELECT_PREVIOUS_ELEMENT_IN_TREE'});
+          }
           break;
         default:
           return;
@@ -170,14 +188,25 @@ export default function Tree(props: Props) {
       setIsNavigatingWithKeyboard(true);
     };
 
-    // It's important to listen to the ownerDocument to support the browser extension.
-    // Here we use portals to render individual tabs (e.g. Profiler),
-    // and the root document might belong to a different window.
-    const ownerDocument = treeRef.current.ownerDocument;
-    ownerDocument.addEventListener('keydown', handleKeyDown);
+    // We used to listen to at the document level for this event.
+    // That allowed us to listen to up/down arrow key events while another section
+    // of DevTools (like the search input) was focused.
+    // This was a minor UX positive.
+    //
+    // (We had to use ownerDocument rather than document for this, because the
+    // DevTools extension renders the Components and Profiler tabs into portals.)
+    //
+    // This approach caused a problem though: it meant that a react-devtools-inline
+    // instance could steal (and prevent/block) keyboard events from other JavaScript
+    // on the page– which could even include other react-devtools-inline instances.
+    // This is a potential major UX negative.
+    //
+    // Given the above trade offs, we now listen on the root of the Tree itself.
+    const container = treeRef.current;
+    container.addEventListener('keydown', handleKeyDown);
 
     return () => {
-      ownerDocument.removeEventListener('keydown', handleKeyDown);
+      container.removeEventListener('keydown', handleKeyDown);
     };
   }, [dispatch, selectedElementID, store]);
 
@@ -283,6 +312,33 @@ export default function Tree(props: Props) {
     [store],
   );
 
+  const handlePreviousErrorOrWarningClick = React.useCallback(() => {
+    dispatch({type: 'SELECT_PREVIOUS_ELEMENT_WITH_ERROR_OR_WARNING_IN_TREE'});
+  }, []);
+
+  const handleNextErrorOrWarningClick = React.useCallback(() => {
+    dispatch({type: 'SELECT_NEXT_ELEMENT_WITH_ERROR_OR_WARNING_IN_TREE'});
+  }, []);
+
+  const errorsOrWarningsSubscription = useMemo(
+    () => ({
+      getCurrentValue: () => ({
+        errors: store.errorCount,
+        warnings: store.warningCount,
+      }),
+      subscribe: (callback: Function) => {
+        store.addListener('mutated', callback);
+        return () => store.removeListener('mutated', callback);
+      },
+    }),
+    [store],
+  );
+  const {errors, warnings} = useSubscription(errorsOrWarningsSubscription);
+
+  const clearErrorsAndWarnings = () => {
+    clearErrorsAndWarningsAPI({bridge, store});
+  };
+
   return (
     <TreeFocusedContext.Provider value={treeFocused}>
       <div className={styles.Tree} ref={treeRef}>
@@ -294,10 +350,48 @@ export default function Tree(props: Props) {
             </Fragment>
           )}
           <Suspense fallback={<Loading />}>
-            {ownerID !== null ? <OwnersStack /> : <SearchInput />}
+            {ownerID !== null ? <OwnersStack /> : <ComponentSearchInput />}
           </Suspense>
-          <div className={styles.VRule} />
-          <SettingsModalContextToggle />
+          {showInlineWarningsAndErrors &&
+            ownerID === null &&
+            (errors > 0 || warnings > 0) && (
+              <React.Fragment>
+                <div className={styles.VRule} />
+                {errors > 0 && (
+                  <div className={styles.IconAndCount}>
+                    <Icon className={styles.ErrorIcon} type="error" />
+                    {errors}
+                  </div>
+                )}
+                {warnings > 0 && (
+                  <div className={styles.IconAndCount}>
+                    <Icon className={styles.WarningIcon} type="warning" />
+                    {warnings}
+                  </div>
+                )}
+                <Button
+                  onClick={handlePreviousErrorOrWarningClick}
+                  title="Scroll to previous error or warning">
+                  <ButtonIcon type="up" />
+                </Button>
+                <Button
+                  onClick={handleNextErrorOrWarningClick}
+                  title="Scroll to next error or warning">
+                  <ButtonIcon type="down" />
+                </Button>
+                <Button
+                  onClick={clearErrorsAndWarnings}
+                  title="Clear all errors and warnings">
+                  <ButtonIcon type="clear" />
+                </Button>
+              </React.Fragment>
+            )}
+          {!hideSettings && (
+            <Fragment>
+              <div className={styles.VRule} />
+              <SettingsModalContextToggle />
+            </Fragment>
+          )}
         </div>
         <div
           className={styles.AutoSizerWrapper}
@@ -321,7 +415,7 @@ export default function Tree(props: Props) {
                 itemSize={lineHeight}
                 ref={listCallbackRef}
                 width={width}>
-                {ElementView}
+                {Element}
               </FixedSizeList>
             )}
           </AutoSizer>
@@ -432,7 +526,7 @@ function InnerElementType({children, style, ...rest}) {
 
   // This ref tracks the current indentation size.
   // We decrease indentation to fit wider/deeper trees.
-  // We indentionally do not increase it again afterward, to avoid the perception of content "jumping"
+  // We intentionally do not increase it again afterward, to avoid the perception of content "jumping"
   // e.g. clicking to toggle/collapse a row might otherwise jump horizontally beneath your cursor,
   // e.g. scrolling a wide row off screen could cause narrower rows to jump to the right some.
   //

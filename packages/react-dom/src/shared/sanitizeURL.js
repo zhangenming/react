@@ -7,14 +7,7 @@
  * @flow
  */
 
-import invariant from 'shared/invariant';
-import ReactSharedInternals from 'shared/ReactSharedInternals';
 import {disableJavaScriptURLs} from 'shared/ReactFeatureFlags';
-
-let ReactDebugCurrentFrame = ((null: any): {getStackAddendum(): string, ...});
-if (__DEV__) {
-  ReactDebugCurrentFrame = ReactSharedInternals.ReactDebugCurrentFrame;
-}
 
 // A javascript: URL can contain leading C0 control or \u0020 SPACE,
 // and any newline or tab are filtered out as if they're not part of the URL.
@@ -32,11 +25,11 @@ let didWarn = false;
 
 function sanitizeURL(url: string) {
   if (disableJavaScriptURLs) {
-    invariant(
-      !isJavaScriptProtocol.test(url),
-      'React has blocked a javascript: URL as a security precaution.%s',
-      __DEV__ ? ReactDebugCurrentFrame.getStackAddendum() : '',
-    );
+    if (isJavaScriptProtocol.test(url)) {
+      throw new Error(
+        'React has blocked a javascript: URL as a security precaution.',
+      );
+    }
   } else if (__DEV__) {
     if (!didWarn && isJavaScriptProtocol.test(url)) {
       didWarn = true;
