@@ -2991,6 +2991,7 @@ type StoredEventListener = {
   // When once:true, a wrapper that removes the fragment listener after the
   // first fire. Otherwise the same as listener.
   attachedListener: EventListener,
+  cleanup: null | (() => void),
 };
 
 export type FragmentInstanceType = {
@@ -3034,6 +3035,15 @@ FragmentInstance.prototype.addEventListener = function (
   listener: EventListener,
   optionsOrUseCapture?: EventListenerOptionsOrUseCapture,
 ): void {
+  let signal: null | AbortSignal = null;
+  let cleanup: null | (() => void) = null;
+  if (optionsOrUseCapture != null && typeof optionsOrUseCapture !== 'boolean') {
+    signal = optionsOrUseCapture.signal || null;
+    if (signal !== null && signal.aborted) {
+      return;
+    }
+  }
+
   if (this._eventListeners === null) {
     this._eventListeners = [];
   }
@@ -3063,12 +3073,24 @@ FragmentInstance.prototype.addEventListener = function (
         }
       };
     }
+    if (signal !== null) {
+      const onAbort = fragmentInstance.removeEventListener.bind(
+        fragmentInstance,
+        type,
+        listener,
+        optionsOrUseCapture,
+      );
+      signal.addEventListener('abort', onAbort, {once: true});
+      // $FlowFixMe[method-unbinding]
+      cleanup = signal.removeEventListener.bind(signal, 'abort', onAbort);
+    }
     const attachOptions = getAttachOptions(optionsOrUseCapture);
     listeners.push({
       type,
       listener,
       optionsOrUseCapture,
       attachedListener,
+      cleanup,
     });
     traverseFragmentInstancesAndTextInstances(
       this._fragmentFiber,
@@ -3110,8 +3132,11 @@ FragmentInstance.prototype.removeEventListener = function (
   if (index === -1) {
     return;
   }
-  const {attachedListener, optionsOrUseCapture: storedOptions} =
-    listeners[index];
+  const {
+    attachedListener,
+    optionsOrUseCapture: storedOptions,
+    cleanup,
+  } = listeners[index];
   const attachOptions = getAttachOptions(storedOptions);
   traverseFragmentInstancesAndTextInstances(
     this._fragmentFiber,
@@ -3121,6 +3146,9 @@ FragmentInstance.prototype.removeEventListener = function (
     attachOptions,
   );
   listeners.splice(index, 1);
+  if (cleanup !== null) {
+    cleanup();
+  }
 };
 function removeEventListenerFromChild(
   child: Fiber,
@@ -3138,14 +3166,17 @@ function isOnceOption(opts: ?EventListenerOptionsOrUseCapture): boolean {
 function getAttachOptions(
   opts: void | EventListenerOptionsOrUseCapture,
 ): void | EventListenerOptionsOrUseCapture {
-  // Strip once when attaching to host children; Fragment owns once semantics.
-  if (opts == null || typeof opts === 'boolean' || opts.once !== true) {
+  // Strip once and signal when attaching to host children; Fragment owns once and signal semantics.
+  if (
+    opts == null ||
+    typeof opts === 'boolean' ||
+    (opts.once !== true && !(opts.signal instanceof AbortSignal))
+  ) {
     return opts;
   }
   return {
     capture: opts.capture,
     passive: opts.passive,
-    signal: opts.signal,
   };
 }
 function normalizeListenerOptions(
